@@ -168,15 +168,6 @@ impl OwningDe for OwningStandardHeader {
                 (State::MsgLenInner, Event::Text(text)) => {
                     msg_len = Some(text.unescape()?.parse()?);
 
-                    State::BsLen
-                }
-
-                (State::BsLen, Event::Start(e)) if e.name().as_ref() == b"bsLen" => {
-                    State::BsLenInner
-                }
-                (State::BsLenInner, Event::Text(text)) => {
-                    bs_len = Some(text.unescape()?.parse()?);
-
                     State::ErrorLen
                 }
 
@@ -186,8 +177,18 @@ impl OwningDe for OwningStandardHeader {
                 (State::ErrorLenInner, Event::Text(text)) => {
                     error_len = Some(text.unescape()?.parse()?);
 
+                    State::BsLen
+                }
+
+                (State::BsLen, Event::Start(e)) if e.name().as_ref() == b"bsLen" => {
+                    State::BsLenInner
+                }
+                (State::BsLenInner, Event::Text(text)) => {
+                    bs_len = Some(text.unescape()?.parse()?);
+
                     State::IntInfo
                 }
+
 
                 (State::IntInfo, Event::Start(e)) if e.name().as_ref() == b"intInfo" => {
                     State::IntInfoInner
@@ -264,8 +265,8 @@ mod test {
             <MsgHeader_PI>
                 <type>RODS_CONNECT</type>
                 <msgLen>10</msgLen>
-                <bsLen>0</bsLen>
                 <errorLen>0</errorLen>
+                <bsLen>0</bsLen>
                 <intInfo>0</intInfo>
             </MsgHeader_PI>
         "##

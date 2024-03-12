@@ -155,6 +155,7 @@ mod test {
         let bytes_written = startup_pack.rods_borrowing_ser(&mut buffer).unwrap();
         let result: &str = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
 
+        println!("TEST BYTES WRITTEN: [{}]", bytes_written);
         assert_eq!(bytes_written, expected.as_bytes().len());
         assert_eq!(result, expected.as_str());
     }

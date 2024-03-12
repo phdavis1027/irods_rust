@@ -2,7 +2,7 @@ pub mod header;
 pub mod startup_pack;
 pub mod version;
 
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 
 use quick_xml::{events::Event, Writer};
 use rods_prot_msg::{error::errors::IrodsError, types::Version};
@@ -77,13 +77,11 @@ mod test {
         let msg_len = startup_pack
             .rods_borrowing_ser(&mut buf[4 + MAX_HEADER_LEN_FOR_XML..])
             .unwrap();
-        println!("MSG_LEN: [{}]", msg_len);
         let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
 
         let header_len = header
             .rods_owning_ser(&mut buf[4..4 + MAX_HEADER_LEN_FOR_XML])
             .unwrap();
-        println!("HEADER LEN: [{}]", header_len);
 
         socket.write(&(header_len as u32).to_be_bytes()).unwrap();
         socket.write(&buf[4..4 + header_len]).unwrap();
@@ -95,9 +93,11 @@ mod test {
         let header_len = u32::from_be_bytes((&buf[..4]).try_into().unwrap());
 
         socket.read(&mut buf[..header_len as usize]).unwrap();
-        let header = match OwningStandardHeader::rods_owning_de(&buf[4..header_len as usize]).unwrap() {
-           OwningMsg::StandardHeader(header) => header 
-        };
+        println!("HEADER: [{}]", std::str::from_utf8(&buf[..header_len as usize]).unwrap());
+        let header =
+            match OwningStandardHeader::rods_owning_de(&buf[..header_len as usize]).unwrap() {
+                OwningMsg::StandardHeader(header) => header,
+            };
 
         assert_eq!(MsgType::RodsVersion, header.msg_type);
         assert_eq!(0, header.int_info);
