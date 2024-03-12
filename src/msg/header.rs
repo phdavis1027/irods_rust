@@ -1,16 +1,23 @@
+use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
 use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Reader, Writer,
 };
-use rods_prot_msg::error::errors::IrodsError;
 
-use std::io::{self, Cursor, Write};
+use std::io::{Cursor, Write};
 
-use super::{OwningDe, OwningSer};
+use crate::{
+    bosd::{
+        xml::{XMLDeserializable, XMLSerializable},
+        Deserializable, Serialiazable,
+    },
+    tag, tag_fmt,
+};
 
-pub const MAX_HEADER_LEN_FOR_XML: usize = 1024;
+pub const MAX_HEADER_LEN_FOR_XML: usize = 1088;
 
-#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
+#[derive(Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum MsgType {
     RodsCsNeg,
     RodsApiReq,
@@ -20,8 +27,8 @@ pub enum MsgType {
     RodsDisconnect,
 }
 
-impl From<MsgType> for &str {
-    fn from(value: MsgType) -> Self {
+impl From<&MsgType> for &str {
+    fn from(value: &MsgType) -> Self {
         match value {
             MsgType::RodsApiReq => "RODS_API_REQ",
             MsgType::RodsApiReply => "RODS_API_REPLY",
@@ -53,8 +60,8 @@ impl TryFrom<&str> for MsgType {
     }
 }
 
-#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
-pub struct OwningStandardHeader {
+#[derive(Debug, Eq, PartialEq)]
+pub struct StandardHeader {
     pub msg_type: MsgType,
     pub msg_len: usize,
     pub bs_len: usize,
@@ -62,7 +69,7 @@ pub struct OwningStandardHeader {
     pub int_info: i32,
 }
 
-impl OwningStandardHeader {
+impl StandardHeader {
     pub fn new(
         msg_type: MsgType,
         msg_len: usize,
@@ -80,46 +87,33 @@ impl OwningStandardHeader {
     }
 }
 
-impl OwningSer for OwningStandardHeader {
-    fn rods_owning_ser(
-        self,
-        sink: &mut [u8],
-    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
+impl Serialiazable for StandardHeader {}
+impl XMLSerializable for StandardHeader {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
 
-        writer.write_event(Event::Start(BytesStart::new("type")))?;
-        writer.write_event(Event::Text(BytesText::new(self.msg_type.into())))?;
-        writer.write_event(Event::End(BytesEnd::new("type")))?;
+        tag!(writer, "type", (&self.msg_type).into());
+        tag_fmt!(writer, "msgLen", "{}", self.msg_len);
+        tag_fmt!(writer, "errorLen", "{}", self.error_len);
+        tag_fmt!(writer, "bsLen", "{}", self.bs_len);
+        tag_fmt!(writer, "intInfo", "{}", self.int_info);
 
-        writer.write_event(Event::Start(BytesStart::new("msgLen")))?;
-        write!(writer.get_mut(), "{}", self.msg_len)?;
-        writer.write_event(Event::End(BytesEnd::new("msgLen")))?;
+        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")))?;
+        let len = cursor.position() as usize;
 
-        writer.write_event(Event::Start(BytesStart::new("bsLen")))?;
-        write!(writer.get_mut(), "{}", self.bs_len)?;
-        writer.write_event(Event::End(BytesEnd::new("bsLen")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("errorLen")))?;
-        write!(writer.get_mut(), "{}", self.error_len)?;
-        writer.write_event(Event::End(BytesEnd::new("errorLen")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("intInfo")))?;
-        write!(writer.get_mut(), "{}", self.error_len)?;
-        writer.write_event(Event::End(BytesEnd::new("intInfo")))?;
-
-        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")));
-
-        Ok(cursor.position() as usize)
+        Ok(len)
     }
 }
 
-impl OwningDe for OwningStandardHeader {
-    fn rods_owning_de(
-        src: &[u8],
-    ) -> Result<super::OwningMsg, rods_prot_msg::error::errors::IrodsError> {
+impl Deserializable for StandardHeader {}
+impl XMLDeserializable for StandardHeader {
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
+    where
+        Self: Sized,
+    {
         #[derive(Debug)]
         #[repr(u8)]
         enum State {
@@ -144,21 +138,25 @@ impl OwningDe for OwningStandardHeader {
 
         let mut state = State::Tag;
 
-        let mut reader = Reader::from_reader(src);
+        let mut reader = Reader::from_reader(xml);
 
         loop {
             state = match (state, reader.read_event()?) {
-                (State::Tag, Event::Start(e)) if e.name().as_ref() == b"MsgHeader_PI" => { State::MsgType
+                (State::Tag, Event::Start(e)) if e.name().as_ref() == b"MsgHeader_PI" => {
+                    State::MsgType
                 }
                 (State::Tag, Event::Start(e)) => {
-                    return Err(IrodsError::UnexpectedResponse(format!("{:?}", e.name().into_inner())))
+                    return Err(IrodsError::UnexpectedResponse(format!(
+                        "{:?}",
+                        e.name().into_inner()
+                    )))
                 }
 
                 (State::MsgType, Event::Start(e)) if e.name().as_ref() == b"type" => {
                     State::MsgTypeInner
                 }
                 (State::MsgTypeInner, Event::Text(text)) => {
-                    msg_type = Some(text.unescape()?.as_ref().try_into()?);
+                    msg_type = Some(text.unescape_with(irods_unescapes)?.as_ref().try_into()?);
                     State::MsgLen
                 }
 
@@ -166,16 +164,7 @@ impl OwningDe for OwningStandardHeader {
                     State::MsgLenInner
                 }
                 (State::MsgLenInner, Event::Text(text)) => {
-                    msg_len = Some(text.unescape()?.parse()?);
-
-                    State::BsLen
-                }
-
-                (State::BsLen, Event::Start(e)) if e.name().as_ref() == b"bsLen" => {
-                    State::BsLenInner
-                }
-                (State::BsLenInner, Event::Text(text)) => {
-                    bs_len = Some(text.unescape()?.parse()?);
+                    msg_len = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::ErrorLen
                 }
@@ -184,7 +173,16 @@ impl OwningDe for OwningStandardHeader {
                     State::ErrorLenInner
                 }
                 (State::ErrorLenInner, Event::Text(text)) => {
-                    error_len = Some(text.unescape()?.parse()?);
+                    error_len = Some(text.unescape_with(irods_unescapes)?.parse()?);
+
+                    State::BsLen
+                }
+
+                (State::BsLen, Event::Start(e)) if e.name().as_ref() == b"bsLen" => {
+                    State::BsLenInner
+                }
+                (State::BsLenInner, Event::Text(text)) => {
+                    bs_len = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::IntInfo
                 }
@@ -193,33 +191,31 @@ impl OwningDe for OwningStandardHeader {
                     State::IntInfoInner
                 }
                 (State::IntInfoInner, Event::Text(text)) => {
-                    int_info = Some(text.unescape()?.parse()?);
+                    int_info = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
-                    return Ok(crate::msg::OwningMsg::StandardHeader(
-                        OwningStandardHeader {
-                            msg_type: msg_type.ok_or(IrodsError::Other(
-                                "Failed to parse field msgType of header".into(),
-                            ))?,
-                            msg_len: msg_len.ok_or(IrodsError::Other(
-                                "Failed to parse field msgLen of header".into(),
-                            ))?,
-                            bs_len: bs_len.ok_or(IrodsError::Other(
-                                "Failed to parse field bsLen of header".into(),
-                            ))?,
-                            error_len: error_len.ok_or(IrodsError::Other(
-                                "Failed to parse field errorLen of header".into(),
-                            ))?,
-                            int_info: int_info.ok_or(IrodsError::Other(
-                                "Failed to parse field intInfo of header".into(),
-                            ))?,
-                        },
-                    ));
+                    return Ok(StandardHeader {
+                        msg_type: msg_type.ok_or(IrodsError::Other(
+                            "Failed to parse field msgType of header".into(),
+                        ))?,
+                        msg_len: msg_len.ok_or(IrodsError::Other(
+                            "Failed to parse field msgLen of header".into(),
+                        ))?,
+                        bs_len: bs_len.ok_or(IrodsError::Other(
+                            "Failed to parse field bsLen of header".into(),
+                        ))?,
+                        error_len: error_len.ok_or(IrodsError::Other(
+                            "Failed to parse field errorLen of header".into(),
+                        ))?,
+                        int_info: int_info.ok_or(IrodsError::Other(
+                            "Failed to parse field intInfo of header".into(),
+                        ))?,
+                    });
                 }
 
                 (state, Event::Eof) => {
-                    return Err(rods_prot_msg::error::errors::IrodsError::Other(format!(
+                    return Err(crate::error::errors::IrodsError::Other(format!(
                         "{state:?}"
-                    )))
+                    )));
                 }
                 state => state.0,
             }
@@ -227,57 +223,66 @@ impl OwningDe for OwningStandardHeader {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use crate::msg::OwningMsg;
+#[derive(Debug, Eq, PartialEq)]
+pub struct HandshakeHeader {
+    algo: String,
+    key_size: usize,
+    salt_size: usize,
+    hash_rounds: usize,
+}
 
-    use super::*;
-
-    #[test]
-    fn owning_header_serialize_correctly() {
-        let header = OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0);
-
-        let mut expected = r##"
-            <MsgHeader_PI>
-                <type>RODS_CONNECT</type>
-                <msgLen>10</msgLen>
-                <bsLen>0</bsLen>
-                <errorLen>0</errorLen>
-                <intInfo>0</intInfo>
-            </MsgHeader_PI>
-        "##
-        .to_string();
-        expected.retain(|c| !c.is_whitespace());
-
-        let mut buffer = [0; 1024];
-        let bytes_written = header.rods_owning_ser(&mut buffer).unwrap();
-
-        let result = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
-
-        assert_eq!(bytes_written, expected.as_bytes().len());
-        assert_eq!(result, expected.as_str());
+impl HandshakeHeader {
+    pub fn new(algo: String, key_size: usize, salt_size: usize, hash_rounds: usize) -> Self {
+        Self {
+            algo,
+            key_size,
+            salt_size,
+            hash_rounds,
+        }
     }
+}
 
-    #[test]
-    fn owning_header_deserialize_correctly() {
-        let mut src = r##"
-            <MsgHeader_PI>
-                <type>RODS_CONNECT</type>
-                <msgLen>10</msgLen>
-                <bsLen>0</bsLen>
-                <errorLen>0</errorLen>
-                <intInfo>0</intInfo>
-            </MsgHeader_PI>
-        "##
-        .to_string();
-        src.retain(|c| !c.is_whitespace());
+impl Serialiazable for HandshakeHeader {}
+impl XMLSerializable for HandshakeHeader {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
+        let mut cursor = Cursor::new(sink);
+        let mut writer = Writer::new(&mut cursor);
 
-        let expected =
-            OwningMsg::StandardHeader(OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0));
+        writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
 
-        assert_eq!(
-            expected,
-            OwningStandardHeader::rods_owning_de(src.as_bytes()).unwrap()
-        )
+        tag!(writer, "type", &self.algo);
+        tag_fmt!(writer, "msgLen", "{}", self.key_size);
+        tag_fmt!(writer, "errorLen", "{}", self.salt_size);
+        tag_fmt!(writer, "bsLen", "{}", self.hash_rounds);
+        tag!(writer, "intInfo", "0");
+
+        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")))?;
+
+        Ok(cursor.position() as usize)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct SharedSecretHeader {
+    pub size: usize,
+}
+
+impl Serialiazable for SharedSecretHeader {}
+impl XMLSerializable for SharedSecretHeader {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
+        let mut cursor = Cursor::new(sink);
+        let mut writer = Writer::new(&mut cursor);
+
+        writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
+
+        tag!(writer, "type", "SHARED_SECRET");
+        tag_fmt!(writer, "msgLen", "{}", self.size);
+        tag!(writer, "errorLen", "0");
+        tag!(writer, "bsLen", "0");
+        tag!(writer, "intInfo", "0");
+
+        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")))?;
+
+        Ok(cursor.position() as usize)
     }
 }

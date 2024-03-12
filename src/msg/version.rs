@@ -1,24 +1,23 @@
 // This struct will probably only be check fleetingly
 
-use std::{borrow::Cow, num::ParseIntError};
+use std::num::ParseIntError;
 
+use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
 use quick_xml::events::Event;
-use rods_prot_msg::error::errors::IrodsError;
 
-use super::{BorrowingDe, BorrowingMsg};
+use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
-#[cfg_attr(feature = "arbitrary", Arbitrary)]
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-pub struct BorrowingVersion<'s> {
-    pub status: u32,
+#[derive(Debug, PartialEq, Eq)]
+pub struct Version {
+    pub status: i32,
     pub rel_version: (u8, u8, u8),
-    pub api_version: Cow<'s, str>,
+    pub api_version: String,
     pub reconn_port: u32,
-    pub reconn_addr: Cow<'s, str>,
+    pub reconn_addr: String,
     pub cookie: u16,
 }
 
-struct RelVersion((u8, u8, u8));
+pub struct RelVersion((u8, u8, u8));
 impl TryFrom<&str> for RelVersion {
     type Error = IrodsError;
 
@@ -43,12 +42,12 @@ impl TryFrom<&str> for RelVersion {
     }
 }
 
-impl<'s> BorrowingVersion<'s> {}
-
-impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
-    fn rods_borrowing_de(
-        src: &'s [u8],
-    ) -> Result<super::BorrowingMsg<'s>, rods_prot_msg::error::errors::IrodsError> {
+impl Deserializable for Version {}
+impl XMLDeserializable for Version {
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
+    where
+        Self: Sized,
+    {
         #[derive(Debug)]
         #[repr(u8)]
         enum State {
@@ -67,14 +66,14 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
             CookieInner,
         }
 
-        let mut status: Option<u32> = None;
+        let mut status: Option<i32> = None;
         let mut rel_version: Option<(u8, u8, u8)> = None;
-        let mut api_version: Option<Cow<'s, str>> = None;
+        let mut api_version: Option<String> = None;
         let mut reconn_port: Option<u32> = None;
-        let mut reconn_addr: Option<Cow<'s, str>> = None;
+        let mut reconn_addr: Option<String> = None;
         let mut cookie: Option<u16> = None;
 
-        let mut reader = quick_xml::reader::Reader::from_reader(src);
+        let mut reader = quick_xml::reader::Reader::from_reader(xml);
 
         let mut state = State::Tag;
         // Basically, this is safe because encountering any invalid input will throw the state
@@ -84,19 +83,18 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                 (State::Tag, Event::Start(e)) if e.name().as_ref() == b"Version_PI" => {
                     State::Status
                 }
-                (State::Tag, _) => {
-                    return Err(
-                        rods_prot_msg::error::errors::IrodsError::UnexpectedResponse(
-                            "Version_PI".into(),
-                        ),
-                    )
+                (State::Tag, Event::Start(e)) => {
+                    return Err(crate::error::errors::IrodsError::UnexpectedResponse(
+                        // FIXME: This is excessive
+                        std::str::from_utf8(e.name().as_ref()).unwrap().into(),
+                    ));
                 }
 
                 (State::Status, Event::Start(e)) if e.name().as_ref() == b"status" => {
                     State::StatusInner
                 }
                 (State::StatusInner, Event::Text(text)) => {
-                    status = Some(text.unescape()?.parse()?);
+                    status = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::RelVersion
                 }
@@ -105,7 +103,7 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                     State::RelVersionInner
                 }
                 (State::RelVersionInner, Event::Text(text)) => {
-                    let v: RelVersion = text.unescape()?.as_ref().try_into()?;
+                    let v: RelVersion = text.unescape_with(irods_unescapes)?.as_ref().try_into()?;
                     rel_version = Some(v.0);
 
                     State::ApiVersion
@@ -115,7 +113,7 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                     State::ApiVersionInner
                 }
                 (State::ApiVersionInner, Event::Text(text)) => {
-                    api_version = Some(text.unescape()?);
+                    api_version = Some(text.unescape_with(irods_unescapes)?.to_string());
 
                     State::ReconnPort
                 }
@@ -133,7 +131,7 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                     State::ReconnAddrInner
                 }
                 (State::ReconnAddrInner, Event::Text(text)) => {
-                    reconn_addr = Some(text.unescape()?);
+                    reconn_addr = Some(text.unescape_with(irods_unescapes)?.to_string());
 
                     State::Cookie
                 }
@@ -142,9 +140,9 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                     State::CookieInner
                 }
                 (State::CookieInner, Event::Text(text)) => {
-                    cookie = Some(text.unescape()?.parse()?);
+                    cookie = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
-                    return Ok(BorrowingMsg::VersionPI(Self {
+                    return Ok(Self {
                         status: status.ok_or(IrodsError::Other(
                             "Failed to parse Version_PI field status".into(),
                         ))?,
@@ -163,10 +161,10 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                         cookie: cookie.ok_or(IrodsError::Other(
                             "Failed to parse Version_PI field cookie".into(),
                         ))?,
-                    }));
+                    });
                 }
-                (state, Event::Eof) => {
-                    return Err(quick_xml::Error::UnexpectedEof(format!("{state:?}")).into());
+                (_, Event::Eof) => {
+                    return Err(IrodsError::Other("Unexpected EOF".into()));
                 }
                 state => state.0, // Hurtle the state machine toward either its inevitable demise or the next data
                                   // value
@@ -174,45 +172,5 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
         }
         // UNSAFE: If any field had been uninitialized, we would have returned an error
         // before this point. State machines!
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn borrowed_version_deserialize_correctly() {
-        let mut src = r##"
-            <Version_PI>
-                <status>0</status>
-                <relVersion>rods4.3.0</relVersion>
-                <apiVersion>d</apiVersion>
-                <reconnPort>1247</reconnPort>
-                <reconnAddr>0.0.0.0</reconnAddr>
-                <cookie>400</cookie>
-            </Version_PI>
-            "##
-        .to_string();
-
-        src.retain(|c| !c.is_whitespace());
-        let api_version = "d";
-        let reconn_addr = "0.0.0.0";
-
-//        let buffer = vec![0; 8092];
-
-        let expected = BorrowingMsg::VersionPI(BorrowingVersion {
-            status: 0,
-            rel_version: (4, 3, 0),
-            api_version: Cow::from(api_version),
-            reconn_port: 1247,
-            reconn_addr: Cow::from(reconn_addr),
-            cookie: 400,
-        });
-
-        assert_eq!(
-            expected,
-            BorrowingVersion::rods_borrowing_de(src.as_bytes()).unwrap()
-        );
     }
 }
