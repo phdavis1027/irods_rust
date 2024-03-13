@@ -35,7 +35,7 @@ mod test {
     use std::net::TcpStream;
 
     use crate::{
-        bosd::{xml::XML, BorrowingSerializer, OwningDeserializer, OwningSerializer},
+        bosd::{xml::XML, BorrowingSerializer, OwningDeserializer, OwningSerializer, BorrowingDeserializer},
         common::IrodsProt,
     };
 
@@ -64,27 +64,24 @@ mod test {
         );
 
         let msg_len =
-            XML::rods_borrowing_ser(&startup_pack, &mut buf[4 + MAX_HEADER_LEN_FOR_XML..]).unwrap();
+            XML::rods_borrowing_ser(&startup_pack, &mut buf[MAX_HEADER_LEN_FOR_XML..]).unwrap();
         let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
 
-        let header_len = XML::rods_owning_ser(&header, &mut buf[4..4 + MAX_HEADER_LEN_FOR_XML])
-            .unwrap();
+        let header_len =
+            XML::rods_owning_ser(&header, &mut buf[..MAX_HEADER_LEN_FOR_XML]).unwrap();
 
         socket.write(&(header_len as u32).to_be_bytes()).unwrap();
-        socket.write(&buf[4..4 + header_len]).unwrap();
+        socket.write(&buf[..header_len]).unwrap();
         socket
-            .write(&buf[4 + MAX_HEADER_LEN_FOR_XML..4 + MAX_HEADER_LEN_FOR_XML + msg_len])
+            .write(&buf[MAX_HEADER_LEN_FOR_XML..MAX_HEADER_LEN_FOR_XML + msg_len])
             .unwrap();
 
         socket.read(&mut buf[..4]).unwrap();
         let header_len = u32::from_be_bytes((&buf[..4]).try_into().unwrap());
 
         socket.read(&mut buf[..header_len as usize]).unwrap();
-        println!(
-            "HEADER: [{}]",
-            std::str::from_utf8(&buf[..header_len as usize]).unwrap()
-        );
-        let header: OwningStandardHeader = XML::rods_owning_de(&buf[..header_len as usize]).unwrap();
+        let header: OwningStandardHeader =
+            XML::rods_owning_de(&buf[..header_len as usize]).unwrap();
 
         assert_eq!(MsgType::RodsVersion, header.msg_type);
         assert_eq!(0, header.int_info);
@@ -92,6 +89,6 @@ mod test {
         assert_eq!(0, header.error_len);
 
         socket.read(&mut buf[..header.msg_len]).unwrap();
-        let version = XML::rods_owning_de::<OwningStandardHeader>(&buf[..header.msg_len]).unwrap();
+        let version: BorrowingVersion = XML::rods_borrowing_de(&buf[..header.msg_len]).unwrap();
     }
 }
