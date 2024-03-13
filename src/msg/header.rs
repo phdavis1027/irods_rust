@@ -6,11 +6,15 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use std::io::{self, Cursor, Write};
 
-use super::{OwningDe, OwningSer};
+use crate::bosd::{
+    xml::{OwningXMLDeserializable, OwningXMLSerializable},
+    BorrowingSerializable, BorrowingSerializer, OwningSerializable, OwningDeserializble,
+};
 
 pub const MAX_HEADER_LEN_FOR_XML: usize = 1024;
 
 #[cfg_attr(test, derive(Debug, Eq, PartialEq))]
+#[repr(u8)]
 pub enum MsgType {
     RodsCsNeg,
     RodsApiReq,
@@ -20,8 +24,8 @@ pub enum MsgType {
     RodsDisconnect,
 }
 
-impl From<MsgType> for &str {
-    fn from(value: MsgType) -> Self {
+impl From<&MsgType> for &str {
+    fn from(value: &MsgType) -> Self {
         match value {
             MsgType::RodsApiReq => "RODS_API_REQ",
             MsgType::RodsApiReply => "RODS_API_REPLY",
@@ -80,18 +84,16 @@ impl OwningStandardHeader {
     }
 }
 
-impl OwningSer for OwningStandardHeader {
-    fn rods_owning_ser(
-        self,
-        sink: &mut [u8],
-    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
+impl OwningSerializable for OwningStandardHeader {}
+impl OwningXMLSerializable for OwningStandardHeader {
+    fn owning_xml_serialize(&self, sink: &mut [u8]) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
 
         writer.write_event(Event::Start(BytesStart::new("type")))?;
-        writer.write_event(Event::Text(BytesText::new(self.msg_type.into())))?;
+        writer.write_event(Event::Text(BytesText::new((&self.msg_type).into())))?;
         writer.write_event(Event::End(BytesEnd::new("type")))?;
 
         writer.write_event(Event::Start(BytesStart::new("msgLen")))?;
@@ -116,10 +118,9 @@ impl OwningSer for OwningStandardHeader {
     }
 }
 
-impl OwningDe for OwningStandardHeader {
-    fn rods_owning_de(
-        src: &[u8],
-    ) -> Result<super::OwningMsg, rods_prot_msg::error::errors::IrodsError> {
+impl OwningDeserializble for OwningStandardHeader {}
+impl OwningXMLDeserializable for OwningStandardHeader {
+    fn owning_xml_deserialize(src: &[u8]) -> Result<Self, IrodsError> {
         #[derive(Debug)]
         #[repr(u8)]
         enum State {
@@ -148,10 +149,14 @@ impl OwningDe for OwningStandardHeader {
 
         loop {
             state = match (state, reader.read_event()?) {
-                (State::Tag, Event::Start(e)) if e.name().as_ref() == b"MsgHeader_PI" => { State::MsgType
+                (State::Tag, Event::Start(e)) if e.name().as_ref() == b"MsgHeader_PI" => {
+                    State::MsgType
                 }
                 (State::Tag, Event::Start(e)) => {
-                    return Err(IrodsError::UnexpectedResponse(format!("{:?}", e.name().into_inner())))
+                    return Err(IrodsError::UnexpectedResponse(format!(
+                        "{:?}",
+                        e.name().into_inner()
+                    )))
                 }
 
                 (State::MsgType, Event::Start(e)) if e.name().as_ref() == b"type" => {
@@ -189,14 +194,13 @@ impl OwningDe for OwningStandardHeader {
                     State::IntInfo
                 }
 
-
                 (State::IntInfo, Event::Start(e)) if e.name().as_ref() == b"intInfo" => {
                     State::IntInfoInner
                 }
                 (State::IntInfoInner, Event::Text(text)) => {
                     int_info = Some(text.unescape()?.parse()?);
 
-                    return Ok(crate::msg::OwningMsg::StandardHeader(
+                    return Ok(
                         OwningStandardHeader {
                             msg_type: msg_type.ok_or(IrodsError::Other(
                                 "Failed to parse field msgType of header".into(),
@@ -214,7 +218,7 @@ impl OwningDe for OwningStandardHeader {
                                 "Failed to parse field intInfo of header".into(),
                             ))?,
                         },
-                    ));
+                    );
                 }
 
                 (state, Event::Eof) => {
@@ -230,12 +234,13 @@ impl OwningDe for OwningStandardHeader {
 
 #[cfg(test)]
 mod test {
-    use crate::msg::OwningMsg;
+    use crate::{bosd::{xml::XML, OwningSerializer, OwningDeserializer}, msg::OwningMsg};
 
     use super::*;
 
     #[test]
     fn owning_header_serialize_correctly() {
+        let serializer = XML;
         let header = OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0);
 
         let mut expected = r##"
@@ -251,7 +256,7 @@ mod test {
         expected.retain(|c| !c.is_whitespace());
 
         let mut buffer = [0; 1024];
-        let bytes_written = header.rods_owning_ser(&mut buffer).unwrap();
+        let bytes_written = XML::rods_owning_ser(&header, &mut buffer).unwrap();
 
         let result = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
 
@@ -272,13 +277,13 @@ mod test {
         "##
         .to_string();
         src.retain(|c| !c.is_whitespace());
+        let deserializer = XML {};
 
-        let expected =
-            OwningMsg::StandardHeader(OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0));
+        let expected = OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0);
 
         assert_eq!(
             expected,
-            OwningStandardHeader::rods_owning_de(src.as_bytes()).unwrap()
-        )
+            XML::rods_owning_de::<OwningStandardHeader>(src.as_bytes()).unwrap()
+        );
     }
 }

@@ -5,7 +5,9 @@ use std::{borrow::Cow, num::ParseIntError};
 use quick_xml::events::Event;
 use rods_prot_msg::error::errors::IrodsError;
 
-use super::{BorrowingDe, BorrowingMsg};
+use crate::bosd::{BorrowingSerializer, BorrowingDeserializer, BorrowingDeserializable};
+
+use crate::bosd::xml::BorrowingXMLDeserializable;
 
 #[cfg_attr(feature = "arbitrary", Arbitrary)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
@@ -43,12 +45,12 @@ impl TryFrom<&str> for RelVersion {
     }
 }
 
-impl<'s> BorrowingVersion<'s> {}
-
-impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
-    fn rods_borrowing_de(
-        src: &'s [u8],
-    ) -> Result<super::BorrowingMsg<'s>, rods_prot_msg::error::errors::IrodsError> {
+impl<'s> BorrowingDeserializable<'s> for BorrowingVersion<'s> {}
+impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
+    fn borrowing_xml_deserialize<'r>(src: &'r [u8]) -> Result<Self, IrodsError>
+    where
+        'r: 's,
+    {
         #[derive(Debug)]
         #[repr(u8)]
         enum State {
@@ -144,7 +146,7 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                 (State::CookieInner, Event::Text(text)) => {
                     cookie = Some(text.unescape()?.parse()?);
 
-                    return Ok(BorrowingMsg::VersionPI(Self {
+                    return Ok(Self {
                         status: status.ok_or(IrodsError::Other(
                             "Failed to parse Version_PI field status".into(),
                         ))?,
@@ -163,7 +165,7 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
                         cookie: cookie.ok_or(IrodsError::Other(
                             "Failed to parse Version_PI field cookie".into(),
                         ))?,
-                    }));
+                    });
                 }
                 (state, Event::Eof) => {
                     return Err(quick_xml::Error::UnexpectedEof(format!("{state:?}")).into());
@@ -179,6 +181,8 @@ impl<'s> BorrowingDe<'s> for BorrowingVersion<'s> {
 
 #[cfg(test)]
 mod test {
+    use crate::bosd::xml::XML;
+
     use super::*;
 
     #[test]
@@ -196,23 +200,24 @@ mod test {
         .to_string();
 
         src.retain(|c| !c.is_whitespace());
+
+        let deserializer = XML;
+
         let api_version = "d";
         let reconn_addr = "0.0.0.0";
 
-//        let buffer = vec![0; 8092];
-
-        let expected = BorrowingMsg::VersionPI(BorrowingVersion {
+        let expected = BorrowingVersion {
             status: 0,
             rel_version: (4, 3, 0),
             api_version: Cow::from(api_version),
             reconn_port: 1247,
             reconn_addr: Cow::from(reconn_addr),
             cookie: 400,
-        });
+        };
 
         assert_eq!(
             expected,
-            BorrowingVersion::rods_borrowing_de(src.as_bytes()).unwrap()
+            XML::rods_borrowing_de::<BorrowingVersion>(src.as_bytes()).unwrap()
         );
     }
 }

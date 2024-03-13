@@ -1,8 +1,7 @@
-use std::io::{self, Cursor, Write, Read};
+use std::io::{self, Cursor, Read, Write};
 
-use crate::common::IrodsProt;
+use crate::{bosd::{xml::BorrowingXMLSerializable, BorrowingSerializable}, common::IrodsProt};
 
-use super::BorrowingSer;
 use rods_prot_msg::error::errors::IrodsError;
 
 use quick_xml::{
@@ -53,15 +52,19 @@ impl<'s> BorrowingStartupPack<'s> {
     }
 }
 
-impl<'s> BorrowingSer<'s> for BorrowingStartupPack<'s> {
-    fn rods_borrowing_ser(self, sink: &mut [u8]) -> Result<usize, IrodsError> {
+impl<'s> BorrowingSerializable<'s> for BorrowingStartupPack<'s> {}
+impl<'s> BorrowingXMLSerializable<'s> for BorrowingStartupPack<'s> {
+    fn borrowing_xml_serialize<'r>(&self, sink: &'r mut [u8]) -> Result<usize, IrodsError>
+    where
+        's: 'r,
+    {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("StartupPack_PI")))?;
 
         writer.write_event(Event::Start(BytesStart::new("irodsProt")))?;
-        writer.write_event(Event::Text(BytesText::new(self.irods_prot.into())))?;
+        writer.write_event(Event::Text(BytesText::new((&self.irods_prot).into())))?;
         writer.write_event(Event::End(BytesEnd::new("irodsProt")))?;
 
         writer.write_event(Event::Start(BytesStart::new("reconnFlag")))?;
@@ -108,12 +111,15 @@ impl<'s> BorrowingSer<'s> for BorrowingStartupPack<'s> {
 
         writer.write_event(Event::End(BytesEnd::new("StartupPack_PI")))?;
 
-        Ok(cursor.position() as usize) 
+        Ok(cursor.position() as usize)
     }
 }
 
 mod test {
-    use crate::msg::startup_pack;
+    use crate::{
+        bosd::{xml::XML, BorrowingSerializer, BorrowingSerializable},
+        msg::startup_pack,
+    };
 
     use super::*;
 
@@ -150,9 +156,13 @@ mod test {
             "##,
         );
         expected.retain(|c| !c.is_whitespace());
+
+        let serializer = XML;
+
         let mut buffer = [0; 1024];
 
-        let bytes_written = startup_pack.rods_borrowing_ser(&mut buffer).unwrap();
+        let bytes_written = XML::rods_borrowing_ser(&startup_pack, &mut buffer)
+            .unwrap();
         let result: &str = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
 
         println!("TEST BYTES WRITTEN: [{}]", bytes_written);

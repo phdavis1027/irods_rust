@@ -5,8 +5,8 @@ pub enum IrodsProt {
     Native
 }
 
-impl From<IrodsProt> for &str {
-    fn from(value: IrodsProt) -> Self {
+impl From<&IrodsProt> for &str {
+    fn from(value: &IrodsProt) -> Self {
         match value {
             IrodsProt::Native => "0",
             IrodsProt::XML => "1",
