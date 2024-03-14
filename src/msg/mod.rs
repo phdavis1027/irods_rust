@@ -13,29 +13,15 @@ use self::{
     header::OwningStandardHeader, startup_pack::BorrowingStartupPack, version::BorrowingVersion,
 };
 
-// This primarily for when you want to
-// send a message, i.e., for when the msg
-// only needs to exist for long enough to
-// throw it over the wire.
-#[cfg_attr(feature = "arbitrary", Arbitrary)]
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-pub enum BorrowingMsg<'s> {
-    StartupPackPI(BorrowingStartupPack<'s>),
-    VersionPI(BorrowingVersion<'s>),
-}
-
-#[cfg_attr(feature = "arbitrary", Arbitrary)]
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-pub enum OwningMsg {
-    StandardHeader(OwningStandardHeader),
-}
-
 #[cfg(test)]
 mod test {
     use std::net::TcpStream;
 
     use crate::{
-        bosd::{xml::XML, BorrowingSerializer, OwningDeserializer, OwningSerializer, BorrowingDeserializer},
+        bosd::{
+            xml::XML, BorrowingDeserializer, BorrowingSerializer, OwningDeserializer,
+            OwningSerializer,
+        },
         common::IrodsProt,
     };
 
@@ -67,8 +53,7 @@ mod test {
             XML::rods_borrowing_ser(&startup_pack, &mut buf[MAX_HEADER_LEN_FOR_XML..]).unwrap();
         let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
 
-        let header_len =
-            XML::rods_owning_ser(&header, &mut buf[..MAX_HEADER_LEN_FOR_XML]).unwrap();
+        let header_len = XML::rods_owning_ser(&header, &mut buf[..MAX_HEADER_LEN_FOR_XML]).unwrap();
 
         socket.write(&(header_len as u32).to_be_bytes()).unwrap();
         socket.write(&buf[..header_len]).unwrap();

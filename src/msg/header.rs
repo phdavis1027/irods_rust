@@ -234,7 +234,7 @@ impl OwningXMLDeserializable for OwningStandardHeader {
 
 #[cfg(test)]
 mod test {
-    use crate::{bosd::{xml::XML, OwningSerializer, OwningDeserializer}, msg::OwningMsg};
+    use crate::{bosd::{xml::XML, OwningSerializer, OwningDeserializer}};
 
     use super::*;
 

@@ -9,6 +9,14 @@ use quick_xml::{
     Writer,
 };
 
+macro_rules! tag {
+    ($writer:ident, $name:expr, $value:expr) => (
+        $writer.write_event(Event::Start(BytesStart::new($name)))?;
+        $writer.write_event(Event::Text(BytesText::new($value)))?;
+        $writer.write_event(Event::End(BytesEnd::new($name)))?;
+    )
+}
+
 #[cfg_attr(feature = "arbitrary", Arbitrary)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct BorrowingStartupPack<'s> {
@@ -63,9 +71,11 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStartupPack<'s> {
 
         writer.write_event(Event::Start(BytesStart::new("StartupPack_PI")))?;
 
-        writer.write_event(Event::Start(BytesStart::new("irodsProt")))?;
-        writer.write_event(Event::Text(BytesText::new((&self.irods_prot).into())))?;
-        writer.write_event(Event::End(BytesEnd::new("irodsProt")))?;
+        tag!(writer, "irodsProt", (&self.irods_prot).into());
+
+        // writer.write_event(Event::Start(BytesStart::new("irodsProt")))?;
+        // writer.write_event(Event::Text(BytesText::new((&self.irods_prot).into())))?;
+        // writer.write_event(Event::End(BytesEnd::new("irodsProt")))?;
 
         writer.write_event(Event::Start(BytesStart::new("reconnFlag")))?;
         write!(writer.get_mut(), "{}", self.reconn_flag)?;
@@ -157,16 +167,12 @@ mod test {
         );
         expected.retain(|c| !c.is_whitespace());
 
-        let serializer = XML;
-
         let mut buffer = [0; 1024];
 
         let bytes_written = XML::rods_borrowing_ser(&startup_pack, &mut buffer)
             .unwrap();
         let result: &str = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
 
-        println!("TEST BYTES WRITTEN: [{}]", bytes_written);
-        assert_eq!(bytes_written, expected.as_bytes().len());
         assert_eq!(result, expected.as_str());
     }
 }
