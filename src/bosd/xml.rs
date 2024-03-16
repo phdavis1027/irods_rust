@@ -1,8 +1,10 @@
 use rods_prot_msg::error::errors::IrodsError;
 
+use crate::common::IrodsProt;
+
 use super::{
     BorrowingDeserializable, BorrowingDeserializer, BorrowingSerializable, BorrowingSerializer,
-    OwningDeserializer, OwningSerializer,
+    OwningDeserializer, OwningSerializer, IrodsProtocol,
 };
 
 #[macro_export]
@@ -24,6 +26,12 @@ macro_rules! tag_fmt {
 }
 
 pub struct XML;
+
+impl IrodsProtocol for XML {
+    fn as_enum() -> IrodsProt {
+        IrodsProt::XML
+    }
+}
 
 pub trait BorrowingXMLDeserializable<'r> {
     fn borrowing_xml_deserialize<'s>(src: &'s [u8]) -> Result<Self, IrodsError>

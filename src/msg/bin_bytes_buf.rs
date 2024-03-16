@@ -23,7 +23,7 @@ use crate::tag_fmt;
 
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct BorrowingStrBuf<'s> {
-    buf: Cow<'s, str>,
+    pub buf: Cow<'s, str>,
 }
 
 impl<'s> BorrowingStrBuf<'s> {

@@ -29,15 +29,17 @@ use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
+static MAX_PASSWORD_LEN: usize = 50;
+
 pub enum CsNegPolicy {
     DontCare,
     Require,
     Refuse,
 }
 
-pub struct ConnConfig<T>
+pub struct ConnConfig<S>
 where
-    T: BorrowingSerializer + BorrowingDeserializer + OwningSerializer + OwningDeserializer,
+    S: io::Read + io::Write,
 {
     pub buf_size: usize,
     pub request_timeout: Duration,
@@ -46,7 +48,7 @@ where
     cs_neg_policy: CsNegPolicy,
     ssl_config: Option<IrodsSSLSettings>,
     pub addr: (String, u16),
-    phantom_transport: PhantomData<T>,
+    phantom_transport: PhantomData<S>,
 }
 
 pub struct Account {
@@ -68,7 +70,7 @@ where
     S: io::Read + io::Write,
 {
     account: Account,
-    config: ConnConfig<T>,
+    config: ConnConfig<S>,
     buf: Vec<u8>,
     socket: S,
     // FIXME: Make this a statically sized array
@@ -81,7 +83,7 @@ where
     T: BorrowingSerializer + BorrowingDeserializer + OwningSerializer + OwningDeserializer,
     S: io::Read + io::Write,
 {
-    pub fn new(account: Account, config: ConnConfig<T>, socket: S) -> Self {
+    pub fn new(account: Account, config: ConnConfig<S>, socket: S) -> Self {
         let buf = vec![0; config.buf_size];
         let signature = vec![0; 16];
         Connection {
@@ -98,7 +100,7 @@ where
     /// but it's the only way to get the job done in an RAII manner
     fn authenticate(
         account: &Account,
-        config: &ConnConfig<T>,
+        config: &ConnConfig<S>,
         socket: &mut S,
         header_buf: &mut Vec<u8>,
         msg_buf: &mut Vec<u8>,
@@ -109,6 +111,7 @@ where
         // at least enough space for the payload
         let mut header_cursor = Cursor::new(header_buf);
         let mut msg_cursor = Cursor::new(msg_buf);
+        let mut tmp_buf: [u8; 4] = [0; 4];
 
         write!(
             header_cursor,
@@ -148,7 +151,6 @@ where
         socket.write_all(&msg_buf[..msg_len])?;
 
         // Receive server reply.
-        let mut tmp_buf: [u8; 4] = [0; 4];
         socket.read_exact(tmp_buf.as_mut())?;
         let header_len = u32::from_be_bytes(tmp_buf) as usize;
 
@@ -156,27 +158,27 @@ where
             header_len, header_buf, socket,
         )?)?;
 
-        let msg: Borro= T::rods_borrowing_de(Self::read_from_server_uninit(
+        let msg: BorrowingStrBuf = T::rods_borrowing_de(Self::read_from_server_uninit(
             header.msg_len,
             msg_buf,
             socket,
         )?)?;
 
         let mut digest = Md5::new();
-        digest.update(req_result);
+        digest.update(msg.buf.as_bytes());
 
-        let mut pad_buf = &mut buf[..MAX_PASSWORD_LENGTH()];
+        let mut pad_buf = &mut header_buf[..MAX_PASSWORD_LEN];
         pad_buf.fill(0);
-
-        let mut i = 0;
-        for c in account.password.as_bytes() {
+        for (i, c) in account.password.as_bytes().iter().enumerate() {
             pad_buf[i] = *c;
             i += 1;
         }
         digest.update(pad_buf);
 
-        let payload = STANDARD.encode(digest.finalize());
-        let payload = format!(
+        let header_cursor = Cursor::new(header_buf);
+        let msg_cursor = Cursor::new(msg_buf);
+        write!(
+            header_cursor,
             r#"
         {{
             "a_ttl": {0},
@@ -187,42 +189,51 @@ where
             "user_name": "{2}",
             "zone_name": "{3}",
             "digest": "{4}"
-        }}
-        "#,
-            config.a_ttl, req_result, account.client_user, account.client_zone, payload
+        }}"#,
+            config.a_ttl,
+            msg.buf,
+            account.client_user,
+            account.client_zone,
+            STANDARD.encode(digest.finalize())
         );
-        let payload = b64_engine.encode(payload);
 
-        socket.rods_send_msg_and_header::<P>(
-            &Msg::BinBytesBuf_PI(BinBytesBuf {
-                buf_len: payload.len() as u32,
-                buf: payload,
-            }),
-            MsgType::RodsApiReq,
-            0,
-            0,
-            AUTH_APN(),
-        )?;
+        let payload_len = b64_engine
+            .encode_slice(
+                &header_buf[..header_cursor.position() as usize],
+                msg_buf.as_mut_slice(),
+            )
+            .map_err(|e| IrodsError::Other("FIXME: This sucks".into()))?;
 
-        let header = socket.rods_header_recv::<P>(buf)?;
-        socket.rods_msg_recv::<P>(buf, header.msg_len)?;
-        Ok(signature.into())
-    }
+        let str_buf =
+            BorrowingStrBuf::new(unsafe { std::str::from_utf8_unchecked(&msg_buf[..payload_len]) });
+        let msg_len = T::rods_borrowing_ser(&str_buf, msg_buf)?;
 
-    pub fn send_header_msg_pair(
-        &mut self,
-        msg: &Msg,
-        msg_type: MsgType,
-        bs_len: usize,
-        error_len: usize,
-        int_info: i32,
-    ) -> Result<usize, IrodsError> {
-        self.socket
-            .rods_send_msg_and_header::<P>(msg, msg_type, error_len, bs_len, int_info)
-    }
+        let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
+        let header_len = T::rods_owning_ser(&header, header_buf)?;
 
-    pub fn recv_header_msg_pair(&mut self) -> Result<(Header, Msg), IrodsError> {
-        self.socket.rods_recv_msg_and_header::<P>(&mut self.buf)
+        // Panics: This won't panic because the previous serialization calls
+        // expnded the buffer to the correct size
+        socket.write_all(&(header_len as u32).to_be_bytes())?;
+        socket.write_all(&header_buf[..header_len])?;
+        socket.write_all(&msg_buf[..msg_len])?;
+
+        // Receive server reply.
+        
+        socket.read_exact(tmp_buf.as_mut())?;
+        let header_len = u32::from_be_bytes(tmp_buf) as usize;
+
+        let header: OwningStandardHeader = T::rods_owning_de(Self::read_from_server_uninit(
+            header_len, header_buf, socket,
+        )?)?;
+
+        let msg: BorrowingStrBuf = T::rods_borrowing_de(Self::read_from_server_uninit(
+            header.msg_len,
+            msg_buf,
+            socket,
+        )?)?;
+
+
+        Ok(())
     }
 
     /// Private function to create a base64 engine from
