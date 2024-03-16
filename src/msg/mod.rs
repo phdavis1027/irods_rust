@@ -1,6 +1,7 @@
 pub mod header;
 pub mod startup_pack;
 pub mod version;
+pub mod bin_bytes_buf;
 
 use std::io::{self, Read, Write};
 

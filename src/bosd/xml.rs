@@ -25,11 +25,11 @@ macro_rules! tag_fmt {
 
 pub struct XML;
 
-pub trait BorrowingXMLDeserializable<'s> {
-    fn borrowing_xml_deserialize<'r>(src: &'r [u8]) -> Result<Self, IrodsError>
+pub trait BorrowingXMLDeserializable<'r> {
+    fn borrowing_xml_deserialize<'s>(src: &'s [u8]) -> Result<Self, IrodsError>
     where
         Self: Sized, // This bound is required to return a Self without dynamic dispatch
-        'r: 's; // The deserialization source must live at least
+        's: 'r; // The deserialization source must live at least
                 // as long as the structure referencing it
 }
 
