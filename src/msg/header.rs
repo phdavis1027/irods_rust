@@ -6,10 +6,10 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use std::io::{self, Cursor, Write};
 
-use crate::bosd::{
+use crate::{tag, tag_fmt, bosd::{
     xml::{OwningXMLDeserializable, OwningXMLSerializable},
     BorrowingSerializable, BorrowingSerializer, OwningSerializable, OwningDeserializble,
-};
+}};
 
 pub const MAX_HEADER_LEN_FOR_XML: usize = 1024;
 
@@ -86,31 +86,18 @@ impl OwningStandardHeader {
 
 impl OwningSerializable for OwningStandardHeader {}
 impl OwningXMLSerializable for OwningStandardHeader {
-    fn owning_xml_serialize(&self, sink: &mut [u8]) -> Result<usize, IrodsError> {
+    fn owning_xml_serialize(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
 
-        writer.write_event(Event::Start(BytesStart::new("type")))?;
-        writer.write_event(Event::Text(BytesText::new((&self.msg_type).into())))?;
-        writer.write_event(Event::End(BytesEnd::new("type")))?;
+        tag!(writer, "type", (&self.msg_type).into());
 
-        writer.write_event(Event::Start(BytesStart::new("msgLen")))?;
-        write!(writer.get_mut(), "{}", self.msg_len)?;
-        writer.write_event(Event::End(BytesEnd::new("msgLen")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("bsLen")))?;
-        write!(writer.get_mut(), "{}", self.bs_len)?;
-        writer.write_event(Event::End(BytesEnd::new("bsLen")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("errorLen")))?;
-        write!(writer.get_mut(), "{}", self.error_len)?;
-        writer.write_event(Event::End(BytesEnd::new("errorLen")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("intInfo")))?;
-        write!(writer.get_mut(), "{}", self.error_len)?;
-        writer.write_event(Event::End(BytesEnd::new("intInfo")))?;
+        tag_fmt!(writer, "msgLen", "{}", self.msg_len);
+        tag_fmt!(writer, "bsLen", "{}", self.bs_len);
+        tag_fmt!(writer, "errorLen", "{}", self.error_len);
+        tag_fmt!(writer, "intInfo", "{}", self.int_info);
 
         writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")));
 
@@ -255,7 +242,7 @@ mod test {
         .to_string();
         expected.retain(|c| !c.is_whitespace());
 
-        let mut buffer = [0; 1024];
+        let mut buffer = Vec::new();
         let bytes_written = XML::rods_owning_ser(&header, &mut buffer).unwrap();
 
         let result = std::str::from_utf8(&buffer[..bytes_written]).unwrap();

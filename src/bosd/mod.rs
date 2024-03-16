@@ -1,5 +1,7 @@
 pub mod xml;
 
+use std::io::Cursor;
+
 use rods_prot_msg::error::errors::IrodsError;
 
 use self::xml::{
@@ -8,7 +10,7 @@ use self::xml::{
 };
 
 pub trait BorrowingSerializer {
-    fn rods_borrowing_ser<'r, 's, BS>(src: &'s BS, sink: &'r mut [u8]) -> Result<usize, IrodsError>
+    fn rods_borrowing_ser<'r, 's, BS>(src: &'s BS, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
     where
         BS: BorrowingSerializable<'s>,
         's: 'r;
@@ -24,7 +26,7 @@ pub trait BorrowingDeserializer {
 pub trait OwningSerializer {
     fn rods_owning_ser<OS: OwningSerializable>(
         src: &OS,
-        sink: &mut [u8],
+        sink: &mut Vec<u8>,
     ) -> Result<usize, IrodsError>;
 }
 

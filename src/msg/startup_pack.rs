@@ -1,6 +1,6 @@
 use std::io::{self, Cursor, Read, Write};
 
-use crate::{bosd::{xml::BorrowingXMLSerializable, BorrowingSerializable}, common::IrodsProt};
+use crate::{tag, bosd::{xml::{BorrowingXMLSerializable}, BorrowingSerializable}, common::IrodsProt, tag_fmt};
 
 use rods_prot_msg::error::errors::IrodsError;
 
@@ -8,14 +8,6 @@ use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };
-
-macro_rules! tag {
-    ($writer:ident, $name:expr, $value:expr) => (
-        $writer.write_event(Event::Start(BytesStart::new($name)))?;
-        $writer.write_event(Event::Text(BytesText::new($value)))?;
-        $writer.write_event(Event::End(BytesEnd::new($name)))?;
-    )
-}
 
 #[cfg_attr(feature = "arbitrary", Arbitrary)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
@@ -62,7 +54,7 @@ impl<'s> BorrowingStartupPack<'s> {
 
 impl<'s> BorrowingSerializable<'s> for BorrowingStartupPack<'s> {}
 impl<'s> BorrowingXMLSerializable<'s> for BorrowingStartupPack<'s> {
-    fn borrowing_xml_serialize<'r>(&self, sink: &'r mut [u8]) -> Result<usize, IrodsError>
+    fn borrowing_xml_serialize<'r>(&self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
     where
         's: 'r,
     {
@@ -70,55 +62,23 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStartupPack<'s> {
         let mut writer = Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("StartupPack_PI")))?;
-
         tag!(writer, "irodsProt", (&self.irods_prot).into());
-
-        // writer.write_event(Event::Start(BytesStart::new("irodsProt")))?;
-        // writer.write_event(Event::Text(BytesText::new((&self.irods_prot).into())))?;
-        // writer.write_event(Event::End(BytesEnd::new("irodsProt")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("reconnFlag")))?;
-        write!(writer.get_mut(), "{}", self.reconn_flag)?;
-        writer.write_event(Event::End(BytesEnd::new("reconnFlag")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("connectCnt")))?;
-        write!(writer.get_mut(), "{}", self.connect_cnt)?;
-        writer.write_event(Event::End(BytesEnd::new("connectCnt")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("proxyUser")))?;
-        writer.write_event(Event::Text(BytesText::new(self.proxy_user)))?;
-        writer.write_event(Event::End(BytesEnd::new("proxyUser")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("proxyRcatZone")))?;
-        writer.write_event(Event::Text(BytesText::new(self.proxy_zone)))?;
-        writer.write_event(Event::End(BytesEnd::new("proxyRcatZone")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("clientUser")))?;
-        writer.write_event(Event::Text(BytesText::new(self.client_user)))?;
-        writer.write_event(Event::End(BytesEnd::new("clientUser")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("clientRcatZone")))?;
-        writer.write_event(Event::Text(BytesText::new(self.client_zone)))?;
-        writer.write_event(Event::End(BytesEnd::new("clientRcatZone")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("relVersion")))?;
-        write!(
-            writer.get_mut(),
+        tag_fmt!(writer, "reconnFlag", "{}", self.reconn_flag);
+        tag_fmt!(writer, "connectCnt", "{}", self.connect_cnt);
+        tag!(writer, "proxyUser", self.proxy_user);
+        tag!(writer, "proxyRcatZone", self.proxy_zone);
+        tag!(writer, "clientUser", self.client_user);
+        tag!(writer, "clientRcatZone", self.client_zone);
+        tag_fmt!(
+            writer,
+            "relVersion",
             "rods{}.{}.{}",
             self.rel_version.0,
             self.rel_version.1,
             self.rel_version.2
-        )?;
-        writer.write_event(Event::End(BytesEnd::new("relVersion")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("apiVersion")))?;
-        writer.write_event(Event::Text(BytesText::new(self.api_version)))?;
-        writer.write_event(Event::End(BytesEnd::new("apiVersion")))?;
-
-        writer.write_event(Event::Start(BytesStart::new("option")))?;
-        writer.write_event(Event::Text(BytesText::new(self.option)))?;
-        writer.write_event(Event::End(BytesEnd::new("option")))?;
-
+        );
+        tag!(writer, "apiVersion", self.api_version);
+        tag!(writer, "option", self.option);
         writer.write_event(Event::End(BytesEnd::new("StartupPack_PI")))?;
 
         Ok(cursor.position() as usize)
@@ -167,7 +127,7 @@ mod test {
         );
         expected.retain(|c| !c.is_whitespace());
 
-        let mut buffer = [0; 1024];
+        let mut buffer = Vec::new();
 
         let bytes_written = XML::rods_borrowing_ser(&startup_pack, &mut buffer)
             .unwrap();

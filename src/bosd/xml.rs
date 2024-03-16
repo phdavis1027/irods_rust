@@ -5,7 +5,23 @@ use super::{
     OwningDeserializer, OwningSerializer,
 };
 
-// Empty struct to act as a generic parameters and hold the relevant traits
+#[macro_export]
+macro_rules! tag {
+    ($writer:ident, $name:expr, $value:expr) => (
+        $writer.write_event(Event::Start(BytesStart::new($name)))?;
+        $writer.write_event(Event::Text(BytesText::new($value)))?;
+        $writer.write_event(Event::End(BytesEnd::new($name)))?;
+    )
+}
+
+#[macro_export]
+macro_rules! tag_fmt {
+    ($writer:ident, $name:expr, $fmt_str:expr, $($value:expr),*) => {
+        $writer.write_event(Event::Start(BytesStart::new($name)))?;
+        write!($writer.get_mut(), $fmt_str, $($value),*)?;
+        $writer.write_event(Event::End(BytesEnd::new($name)))?;
+    };
+}
 
 pub struct XML;
 
@@ -18,7 +34,7 @@ pub trait BorrowingXMLDeserializable<'s> {
 }
 
 pub trait BorrowingXMLSerializable<'s> {
-    fn borrowing_xml_serialize<'r> (&'s self, sink: &'r mut [u8]) -> Result<usize, IrodsError>
+    fn borrowing_xml_serialize<'r> (&'s self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
     where
         Self: Sized, 
         's: 'r;
@@ -29,7 +45,7 @@ pub trait OwningXMLDeserializable {
 }
 
 pub trait OwningXMLSerializable {
-    fn owning_xml_serialize(&self, sink: &mut [u8]) -> Result<usize, IrodsError>;
+    fn owning_xml_serialize(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError>;
 }
 
 /// Basically all the xml impl of these traits does is
@@ -49,7 +65,7 @@ impl BorrowingDeserializer for XML {
 impl BorrowingSerializer for XML {
     fn rods_borrowing_ser<'r, 's, BS>(
         src: &'s BS,
-        sink: &'r mut [u8],
+        sink: &'r mut Vec<u8>,
     ) -> Result<usize, IrodsError> 
         where 's: 'r,
         BS: BorrowingSerializable<'s>
@@ -67,7 +83,7 @@ impl OwningDeserializer for XML {
 impl OwningSerializer for XML {
     fn rods_owning_ser<OS: super::OwningSerializable>(
         src: &OS,
-        sink: &mut [u8],
+        sink: &mut Vec<u8>,
     ) -> Result<usize, IrodsError> {
         src.owning_xml_serialize(sink)
     }

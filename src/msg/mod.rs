@@ -15,7 +15,7 @@ use self::{
 
 #[cfg(test)]
 mod test {
-    use std::net::TcpStream;
+    use std::{io::Cursor, net::TcpStream};
 
     use crate::{
         bosd::{
@@ -32,7 +32,8 @@ mod test {
 
     #[test]
     fn proof_of_concept_first_two_steps_of_handshake() {
-        let mut buf = [0; 2048];
+        let mut msg_buf = Cursor::new(vec![0; 1024]);
+        let mut header_buf: Cursor<Vec<u8>> = Cursor::new(vec![0; MAX_HEADER_LEN_FOR_XML]);
         let addr = "172.27.0.3";
         let mut socket = TcpStream::connect((addr, 1247)).unwrap();
 
@@ -49,31 +50,32 @@ mod test {
             "packe",
         );
 
-        let msg_len =
-            XML::rods_borrowing_ser(&startup_pack, &mut buf[MAX_HEADER_LEN_FOR_XML..]).unwrap();
+        let msg_len = XML::rods_borrowing_ser(&startup_pack, msg_buf.get_mut()).unwrap();
+
         let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
 
-        let header_len = XML::rods_owning_ser(&header, &mut buf[..MAX_HEADER_LEN_FOR_XML]).unwrap();
+        let header_len = XML::rods_owning_ser(&header, header_buf.get_mut()).unwrap();
 
         socket.write(&(header_len as u32).to_be_bytes()).unwrap();
-        socket.write(&buf[..header_len]).unwrap();
-        socket
-            .write(&buf[MAX_HEADER_LEN_FOR_XML..MAX_HEADER_LEN_FOR_XML + msg_len])
-            .unwrap();
+        socket.write(&mut header_buf.get_mut()[..header_len]).unwrap();
+        socket.write(&mut msg_buf.get_mut()[..msg_len]).unwrap();
 
-        socket.read(&mut buf[..4]).unwrap();
-        let header_len = u32::from_be_bytes((&buf[..4]).try_into().unwrap());
+        let mut header_buf_as_slice = &mut header_buf.get_mut().as_mut_slice()[..4];
+        socket.read(header_buf_as_slice).unwrap();
+        let header_len = u32::from_be_bytes((header_buf_as_slice).try_into().unwrap());
 
-        socket.read(&mut buf[..header_len as usize]).unwrap();
-        let header: OwningStandardHeader =
-            XML::rods_owning_de(&buf[..header_len as usize]).unwrap();
+        let mut header_buf_as_slice =
+            &mut header_buf.get_mut().as_mut_slice()[..header_len as usize];
+        socket.read(header_buf_as_slice).unwrap();
+        let header: OwningStandardHeader = XML::rods_owning_de(header_buf_as_slice).unwrap();
 
         assert_eq!(MsgType::RodsVersion, header.msg_type);
         assert_eq!(0, header.int_info);
         assert_eq!(0, header.bs_len);
         assert_eq!(0, header.error_len);
 
-        socket.read(&mut buf[..header.msg_len]).unwrap();
-        let version: BorrowingVersion = XML::rods_borrowing_de(&buf[..header.msg_len]).unwrap();
+        socket.read(msg_buf.get_mut()).unwrap();
+        let version: BorrowingVersion =
+            XML::rods_borrowing_de(msg_buf.get_mut().as_mut_slice()).unwrap();
     }
 }
