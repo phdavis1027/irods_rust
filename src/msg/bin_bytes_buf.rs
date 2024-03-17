@@ -48,7 +48,7 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStrBuf<'s> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
-        writer.write_event(Event::Start(BytesStart::new("BinBytesBuf_PI")));
+        writer.write_event(Event::Start(BytesStart::new("BinBytesBuf_PI")))?;
 
         tag_fmt!(
             writer,
@@ -63,7 +63,7 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStrBuf<'s> {
             &self.buf
         );
 
-        writer.write_event(Event::End(BytesEnd::new("BinBytesBuf_PI")));
+        writer.write_event(Event::End(BytesEnd::new("BinBytesBuf_PI")))?;
 
         Ok(cursor.position() as usize)
     }

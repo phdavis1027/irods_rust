@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 pub mod ssl;
 pub mod tcp;
 
@@ -111,7 +113,7 @@ where
         // at least enough space for the payload
         let mut header_cursor = Cursor::new(header_buf);
         let mut msg_cursor = Cursor::new(msg_buf);
-        let mut tmp_buf: [u8; 4] = [0; 4];
+        let mut tmp_buf = [0u8; 4];
 
         write!(
             header_cursor,
@@ -128,55 +130,64 @@ where
             config.a_ttl, account.client_user, account.client_zone
         )?;
 
+        let unencoded_len = header_cursor.position() as usize;
         let payload_len = b64_engine
             .encode_slice(
-                &header_buf[..header_cursor.position() as usize],
-                msg_buf.as_mut_slice(),
+                &header_cursor.get_mut()[..unencoded_len],
+                msg_cursor.get_mut().as_mut_slice()
             )
             .map_err(|e| IrodsError::Other("FIXME: This sucks.".into()))?;
 
         // UNSAFE: Base64 is always valid UTF-8
+        let encoded_str = unsafe { std::str::from_utf8_unchecked(&msg_cursor.get_ref()[..payload_len]) };
         let str_buf =
-            BorrowingStrBuf::new(unsafe { std::str::from_utf8_unchecked(&msg_buf[..payload_len]) });
+            BorrowingStrBuf::new(encoded_str);
 
-        let msg_len = T::rods_borrowing_ser(&str_buf, msg_buf)?;
+        // We're being very naughty here and serializing the msg into the
+        // thing called "header" buf. This unfortunate, but I can't think
+        // of a better way to do it right now that gets around the 
+        // borrow checker.
+        let msg_len = T::rods_borrowing_ser(&str_buf, header_cursor.get_mut())?;
 
         let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
-        let header_len = T::rods_owning_ser(&header, header_buf)?;
+        let header_len = T::rods_owning_ser(&header, msg_cursor.get_mut())?;
 
         // Panics: This won't panic because the previous serialization calls
         // expnded the buffer to the correct size
         socket.write_all(&(header_len as u32).to_be_bytes())?;
-        socket.write_all(&header_buf[..header_len])?;
-        socket.write_all(&msg_buf[..msg_len])?;
+        socket.write_all(&msg_cursor.get_ref()[..msg_len])?;
+        socket.write_all(&header_cursor.get_ref()[..header_len])?;
 
         // Receive server reply.
         socket.read_exact(tmp_buf.as_mut())?;
         let header_len = u32::from_be_bytes(tmp_buf) as usize;
 
         let header: OwningStandardHeader = T::rods_owning_de(Self::read_from_server_uninit(
-            header_len, header_buf, socket,
+            header_len, header_cursor.get_mut(), socket,
         )?)?;
+
+        // After this point, there should be no extent borrows of the buffers
+
+        header_cursor.set_position(0);
+        msg_cursor.set_position(0);
 
         let msg: BorrowingStrBuf = T::rods_borrowing_de(Self::read_from_server_uninit(
             header.msg_len,
-            msg_buf,
+            msg_cursor.get_mut(),
             socket,
         )?)?;
 
         let mut digest = Md5::new();
         digest.update(msg.buf.as_bytes());
 
-        let mut pad_buf = &mut header_buf[..MAX_PASSWORD_LEN];
+        let mut pad_buf = &mut header_cursor.get_mut()[..MAX_PASSWORD_LEN];
         pad_buf.fill(0);
         for (i, c) in account.password.as_bytes().iter().enumerate() {
             pad_buf[i] = *c;
-            i += 1;
         }
         digest.update(pad_buf);
 
-        let header_cursor = Cursor::new(header_buf);
-        let msg_cursor = Cursor::new(msg_buf);
+
         write!(
             header_cursor,
             r#"
@@ -197,43 +208,47 @@ where
             STANDARD.encode(digest.finalize())
         );
 
+        let unencoded_len = header_cursor.position() as usize;
         let payload_len = b64_engine
             .encode_slice(
-                &header_buf[..header_cursor.position() as usize],
-                msg_buf.as_mut_slice(),
+                &header_cursor.get_mut()[..unencoded_len],
+                msg_cursor.get_mut().as_mut_slice(),
             )
             .map_err(|e| IrodsError::Other("FIXME: This sucks".into()))?;
 
+        let encoded_str = unsafe { std::str::from_utf8_unchecked(&msg_cursor.get_ref()[..payload_len]) };
         let str_buf =
-            BorrowingStrBuf::new(unsafe { std::str::from_utf8_unchecked(&msg_buf[..payload_len]) });
-        let msg_len = T::rods_borrowing_ser(&str_buf, msg_buf)?;
+            BorrowingStrBuf::new(encoded_str);
+        let msg_len = T::rods_borrowing_ser(&str_buf, header_cursor.get_mut())?;
 
         let header = OwningStandardHeader::new(MsgType::RodsConnect, msg_len, 0, 0, 0);
-        let header_len = T::rods_owning_ser(&header, header_buf)?;
+        let header_len = T::rods_owning_ser(&header, msg_cursor.get_mut())?;
 
         // Panics: This won't panic because the previous serialization calls
         // expnded the buffer to the correct size
         socket.write_all(&(header_len as u32).to_be_bytes())?;
-        socket.write_all(&header_buf[..header_len])?;
-        socket.write_all(&msg_buf[..msg_len])?;
+        socket.write_all(&msg_cursor.get_mut()[..msg_len])?;
+        socket.write_all(&header_cursor.get_mut()[..header_len])?;
 
         // Receive server reply.
+        header_cursor.set_position(0);
+        msg_cursor.set_position(0);
         
         socket.read_exact(tmp_buf.as_mut())?;
         let header_len = u32::from_be_bytes(tmp_buf) as usize;
 
         let header: OwningStandardHeader = T::rods_owning_de(Self::read_from_server_uninit(
-            header_len, header_buf, socket,
+            header_len, header_cursor.get_mut(), socket,
         )?)?;
 
         let msg: BorrowingStrBuf = T::rods_borrowing_de(Self::read_from_server_uninit(
             header.msg_len,
-            msg_buf,
+            msg_cursor.get_mut(),
             socket,
         )?)?;
 
 
-        Ok(())
+        Ok(Vec::new())
     }
 
     /// Private function to create a base64 engine from
