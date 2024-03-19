@@ -33,6 +33,7 @@ use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 static MAX_PASSWORD_LEN: usize = 50;
 
+#[derive(Clone)]
 pub enum CsNegPolicy {
     DontCare,
     Require,
@@ -53,6 +54,27 @@ where
     phantom_transport: PhantomData<S>,
 }
 
+// Manually implement Clone for ConnConfig because it contains a phantom data field
+// which is not Clone 
+impl<S> Clone for ConnConfig<S>
+where
+    S: io::Read + io::Write,
+{
+    fn clone(&self) -> Self {
+        ConnConfig {
+            buf_size: self.buf_size,
+            request_timeout: self.request_timeout,
+            read_timeout: self.read_timeout,
+            a_ttl: self.a_ttl,
+            cs_neg_policy: self.cs_neg_policy.clone(),
+            ssl_config: self.ssl_config.clone(),
+            addr: self.addr.clone(),
+            phantom_transport: PhantomData,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Account {
     pub auth_scheme: AuthenticationScheme,
     pub client_user: String,
@@ -62,6 +84,7 @@ pub struct Account {
     pub password: String,
 }
 
+#[derive(Clone)]
 pub enum AuthenticationScheme {
     Native,
 }
@@ -73,7 +96,8 @@ where
 {
     account: Account,
     config: ConnConfig<S>,
-    buf: Vec<u8>,
+    header_buf: Vec<u8>,
+    msg_buf: Vec<u8>,
     socket: S,
     // FIXME: Make this a statically sized array
     signature: Vec<u8>,

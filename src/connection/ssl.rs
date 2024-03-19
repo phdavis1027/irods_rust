@@ -11,6 +11,8 @@ use rods_prot_msg::error::errors::IrodsError;
 
 pub type SslStream = TlsStream<TcpStream>;
 
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+#[derive(Clone)]
 pub struct IrodsSSLSettings {
     pub hash_rounds: u32,
     pub key_size: usize,
