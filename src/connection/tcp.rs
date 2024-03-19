@@ -117,6 +117,7 @@ where
         let mut msg_buf = vec![0u8; 2048];
 
         Self::startup(account, &mut socket, &mut header_buf, &mut msg_buf)?;
+        Self::authenticate(account, config, &mut socket, &mut header_buf, &mut msg_buf)?;
         Ok(Self {
             account: account.clone(),
             config: config.clone(),
