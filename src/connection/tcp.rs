@@ -108,8 +108,8 @@ where
         Ok(())
     }
 
-    pub fn new(account: &Account, config: ConnConfig<TcpStream>) -> Result<Self, IrodsError> {
-        let mut socket = TcpStream::connect(config.addr)?;
+    pub fn new(account: &Account, config: &ConnConfig<TcpStream>) -> Result<Self, IrodsError> {
+        let mut socket = TcpStream::connect(&config.addr)?;
         socket.set_read_timeout(Some(config.read_timeout))?;
         socket.set_write_timeout(Some(config.request_timeout))?;
 
@@ -118,12 +118,13 @@ where
 
         Self::startup(account, &mut socket, &mut header_buf, &mut msg_buf)?;
         Ok(Self {
-            account.clone(),
-            config,
+            account: account.clone(),
+            config: config.clone(),
             header_buf,
             socket,
             msg_buf,
-            phantom: PhantomData,
+            signature: Vec::new(),
+            phantom_protocol: PhantomData,
         })
     }
 }

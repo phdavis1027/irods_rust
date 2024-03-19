@@ -109,19 +109,6 @@ where
     T: BorrowingSerializer + BorrowingDeserializer + OwningSerializer + OwningDeserializer,
     S: io::Read + io::Write,
 {
-    pub fn new(account: Account, config: ConnConfig<S>, socket: S) -> Self {
-        let buf = vec![0; config.buf_size];
-        let signature = vec![0; 16];
-        Connection {
-            account,
-            config,
-            buf,
-            socket,
-            signature,
-            phantom_protocol: PhantomData,
-        }
-    }
-
     /// This method does things by hand, which is very annoying,
     /// but it's the only way to get the job done in an RAII manner
     fn authenticate(
@@ -297,29 +284,55 @@ where
         Ok(&buf[..len])
     }
 
-    fn read_from_server(&mut self, len: usize) -> Result<&[u8], IrodsError> {
-        if len > self.buf.len() {
-            self.buf.resize(len, 0);
+    fn read_into_msg_buf(&mut self, len: usize) -> Result<&[u8], IrodsError> {
+        if len > self.msg_buf.len() {
+            self.msg_buf.resize(len, 0);
         }
-        self.socket.read_exact(&mut self.buf[..len])?;
-        Ok(&self.buf[..len])
+        self.socket.read_exact(&mut self.msg_buf[..len])?;
+        Ok(&self.msg_buf[..len])
     }
 
-    fn push_owning(&mut self, msg: &impl OwningSerializable) -> Result<usize, IrodsError> {
-        let msg_len = T::rods_owning_ser(msg, &mut self.buf)?;
-        self.socket.write(&mut self.buf[..msg_len])?;
+    fn read_into_header_buf(&mut self, len: usize) -> Result<&[u8], IrodsError> {
+        if len > self.header_buf.len() {
+            self.header_buf.resize(len, 0);
+        }
+        self.socket.read_exact(&mut self.header_buf[..len])?;
+        Ok(&self.header_buf[..len])
+    }
+
+    fn push_owning_from_msg_buf(&mut self, msg: &impl OwningSerializable) -> Result<usize, IrodsError> {
+        let msg_len = T::rods_owning_ser(msg, &mut self.msg_buf)?;
+        self.socket.write(&mut self.msg_buf[..msg_len])?;
         Ok(msg_len)
     }
 
-    fn push_borrowing<'s, 'r>(
+    fn push_owning_from_header_buf(&mut self, msg: &impl OwningSerializable) -> Result<usize, IrodsError> {
+        let msg_len = T::rods_owning_ser(msg, &mut self.header_buf)?;
+        self.socket.write(&mut self.header_buf[..msg_len])?;
+        Ok(msg_len)
+    }
+
+    fn push_borrowing_from_msg_buf<'s, 'r>(
         &'r mut self,
         msg: &'s impl BorrowingSerializable<'s>,
     ) -> Result<usize, IrodsError>
     where
         's: 'r,
     {
-        let msg_len = T::rods_borrowing_ser(msg, &mut self.buf)?;
-        self.socket.write_all(&mut self.buf[..msg_len])?;
+        let msg_len = T::rods_borrowing_ser(msg, &mut self.msg_buf)?;
+        self.socket.write_all(&mut self.msg_buf[..msg_len])?;
+        Ok(msg_len)
+    }
+
+    fn push_borrowing_from_header_buf<'s, 'r>(
+        &'r mut self,
+        msg: &'s impl BorrowingSerializable<'s>,
+    ) -> Result<usize, IrodsError>
+    where
+        's: 'r,
+    {
+        let msg_len = T::rods_borrowing_ser(msg, &mut self.header_buf)?;
+        self.socket.write_all(&mut self.header_buf[..msg_len])?;
         Ok(msg_len)
     }
 
@@ -327,22 +340,37 @@ where
     // don't need to pass length as an argument
     pub fn pull_header(&mut self) -> Result<OwningStandardHeader, IrodsError> {
         let header_size =
-            u32::from_be_bytes(self.read_from_server(4)?.try_into().unwrap()) as usize;
-        self.pull_owning(header_size)
+            u32::from_be_bytes(self.read_into_header_buf(4)?.try_into().unwrap()) as usize;
+        self.pull_owning_into_header_buf(header_size)
     }
 
-    pub fn pull_owning<M>(&mut self, len: usize) -> Result<M, IrodsError>
+    pub fn pull_owning_into_msg_buf<M>(&mut self, len: usize) -> Result<M, IrodsError>
     where
         M: OwningDeserializble,
     {
-        T::rods_owning_de(self.read_from_server(len)?)
+        T::rods_owning_de(self.read_into_msg_buf(len)?)
     }
 
-    pub fn pull_borrowing<'s, 'r, M>(&'s mut self, len: usize) -> Result<M, IrodsError>
+    fn pull_owning_into_header_buf<M>(&mut self, len: usize) -> Result<M, IrodsError>
+    where
+        M: OwningDeserializble,
+    {
+        T::rods_owning_de(self.read_into_header_buf(len)?)
+    }
+
+    pub fn pull_borrowing_into_msg_buf<'s, 'r, M>(&'s mut self, len: usize) -> Result<M, IrodsError>
     where
         M: BorrowingDeserializable<'r>,
         's: 'r,
     {
-        T::rods_borrowing_de(self.read_from_server(len)?)
+        T::rods_borrowing_de(self.read_into_msg_buf(len)?)
+    }
+
+    pub fn pull_borrowing_into_header_buf<'s, 'r, M>(&'s mut self, len: usize) -> Result<M, IrodsError>
+    where
+        M: BorrowingDeserializable<'r>,
+        's: 'r,
+    {
+        T::rods_borrowing_de(self.read_into_header_buf(len)?)
     }
 }
