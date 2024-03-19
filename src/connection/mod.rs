@@ -84,6 +84,20 @@ pub struct Account {
     pub password: String,
 }
 
+#[cfg(test)]
+impl Account {
+    fn test_account() -> Account {
+        Account {
+            auth_scheme: AuthenticationScheme::Native,
+            client_user: "rods".into(),
+            client_zone: "tempZone".into(),
+            proxy_user: "rods".into(),
+            proxy_zone: "tempZone".into(),
+            password: "rods".into(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub enum AuthenticationScheme {
     Native,

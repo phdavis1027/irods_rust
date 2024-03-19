@@ -43,6 +43,20 @@ impl ConnConfig<TcpStream> {
     }
 }
 
+#[cfg(test)]
+impl ConnConfig<TcpStream> {
+    fn test_config() -> Self {
+        Self::new(
+            8092,
+            Duration::from_secs(5),
+            Duration::from_secs(5),
+            "172.27.0.3".into(),
+            1247,
+            30,
+        )
+    }
+}
+
 impl Default for ConnConfig<TcpStream> {
     fn default() -> Self {
         Self {
@@ -127,5 +141,19 @@ where
             signature: Vec::new(),
             phantom_protocol: PhantomData,
         })
+    }
+}
+
+#[cfg(test)]
+mod test{
+    use crate::bosd::xml::XML;
+
+    use super::*;
+
+    #[test]
+    fn tcp_connects_correctly() {
+        let account = Account::test_account();
+        let config = ConnConfig::test_config();
+        let conn: Connection<XML> = Connection::new(&account, &config).unwrap();
     }
 }
