@@ -1,6 +1,10 @@
 use std::io::{self, Cursor, Read, Write};
 
-use crate::{tag, bosd::{xml::{BorrowingXMLSerializable}, BorrowingSerializable}, common::IrodsProt, tag_fmt};
+use crate::{
+    bosd::{xml::BorrowingXMLSerializable, BorrowingSerializable},
+    common::IrodsProt,
+    tag, tag_fmt,
+};
 
 use rods_prot_msg::error::errors::IrodsError;
 
@@ -54,7 +58,7 @@ impl<'s> BorrowingStartupPack<'s> {
 
 impl<'s> BorrowingSerializable<'s> for BorrowingStartupPack<'s> {}
 impl<'s> BorrowingXMLSerializable<'s> for BorrowingStartupPack<'s> {
-    fn borrowing_xml_serialize<'r>(&self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
+    fn borrowing_xml_serialize<'r>(self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
     where
         's: 'r,
     {
@@ -87,7 +91,7 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStartupPack<'s> {
 
 mod test {
     use crate::{
-        bosd::{xml::XML, BorrowingSerializer, BorrowingSerializable},
+        bosd::{xml::XML, BorrowingSerializable, BorrowingSerializer},
         msg::startup_pack,
     };
 
@@ -129,8 +133,7 @@ mod test {
 
         let mut buffer = Vec::new();
 
-        let bytes_written = XML::rods_borrowing_ser(&startup_pack, &mut buffer)
-            .unwrap();
+        let bytes_written = XML::rods_borrowing_ser(startup_pack, &mut buffer).unwrap();
         let result: &str = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
 
         assert_eq!(result, expected.as_str());

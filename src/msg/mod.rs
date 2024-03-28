@@ -1,7 +1,7 @@
+pub mod bin_bytes_buf;
 pub mod header;
 pub mod startup_pack;
 pub mod version;
-pub mod bin_bytes_buf;
 
 use std::io::{self, Read, Write};
 
@@ -35,7 +35,7 @@ mod test {
     fn proof_of_concept_first_two_steps_of_handshake() {
         let mut msg_buf = Cursor::new(vec![0; 1024]);
         let mut header_buf: Cursor<Vec<u8>> = Cursor::new(vec![0; MAX_HEADER_LEN_FOR_XML]);
-        let addr = "172.27.0.3";
+        let addr = "172.27.0.4";
         let mut socket = TcpStream::connect((addr, 1247)).unwrap();
 
         let startup_pack = BorrowingStartupPack::new(
@@ -58,15 +58,14 @@ mod test {
         let header_len = XML::rods_owning_ser(&header, header_buf.get_mut()).unwrap();
 
         socket.write(&(header_len as u32).to_be_bytes()).unwrap();
-        socket.write(&mut header_buf.get_mut()[..header_len]).unwrap();
-        socket.write(&mut msg_buf.get_mut()[..msg_len]).unwrap();
+        socket.write(&header_buf.get_mut()[..header_len]).unwrap();
+        socket.write(&msg_buf.get_mut()[..msg_len]).unwrap();
 
-        let mut header_buf_as_slice = &mut header_buf.get_mut().as_mut_slice()[..4];
+        let header_buf_as_slice = &mut header_buf.get_mut().as_mut_slice()[..4];
         socket.read(header_buf_as_slice).unwrap();
         let header_len = u32::from_be_bytes((header_buf_as_slice).try_into().unwrap());
 
-        let mut header_buf_as_slice =
-            &mut header_buf.get_mut().as_mut_slice()[..header_len as usize];
+        let header_buf_as_slice = &mut header_buf.get_mut().as_mut_slice()[..header_len as usize];
         socket.read(header_buf_as_slice).unwrap();
         let header: OwningStandardHeader = XML::rods_owning_de(header_buf_as_slice).unwrap();
 
@@ -76,7 +75,7 @@ mod test {
         assert_eq!(0, header.error_len);
 
         socket.read(msg_buf.get_mut()).unwrap();
-        let version: BorrowingVersion =
+        let _version: BorrowingVersion =
             XML::rods_borrowing_de(msg_buf.get_mut().as_mut_slice()).unwrap();
     }
 }

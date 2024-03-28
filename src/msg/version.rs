@@ -5,7 +5,7 @@ use std::{borrow::Cow, num::ParseIntError};
 use quick_xml::events::Event;
 use rods_prot_msg::error::errors::IrodsError;
 
-use crate::bosd::{BorrowingSerializer, BorrowingDeserializer, BorrowingDeserializable};
+use crate::bosd::{BorrowingDeserializable, BorrowingDeserializer, BorrowingSerializer};
 
 use crate::bosd::xml::BorrowingXMLDeserializable;
 

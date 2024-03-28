@@ -4,16 +4,16 @@ use crate::common::IrodsProt;
 
 use super::{
     BorrowingDeserializable, BorrowingDeserializer, BorrowingSerializable, BorrowingSerializer,
-    OwningDeserializer, OwningSerializer, IrodsProtocol,
+    IrodsProtocol, OwningDeserializer, OwningSerializer,
 };
 
 #[macro_export]
 macro_rules! tag {
-    ($writer:ident, $name:expr, $value:expr) => (
+    ($writer:ident, $name:expr, $value:expr) => {
         $writer.write_event(Event::Start(BytesStart::new($name)))?;
         $writer.write_event(Event::Text(BytesText::new($value)))?;
         $writer.write_event(Event::End(BytesEnd::new($name)))?;
-    )
+    };
 }
 
 #[macro_export]
@@ -42,14 +42,15 @@ pub trait BorrowingXMLDeserializable<'r> {
 }
 
 pub trait BorrowingXMLSerializable<'s> {
-    fn borrowing_xml_serialize<'r> (&'s self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
+    fn borrowing_xml_serialize<'r>(self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
     where
-        Self: Sized, 
         's: 'r;
 }
 
 pub trait OwningXMLDeserializable {
-    fn owning_xml_deserialize(src: &[u8]) -> Result<Self, IrodsError> where Self: Sized;
+    fn owning_xml_deserialize(src: &[u8]) -> Result<Self, IrodsError>
+    where
+        Self: Sized;
 }
 
 pub trait OwningXMLSerializable {
@@ -71,12 +72,10 @@ impl BorrowingDeserializer for XML {
 }
 
 impl BorrowingSerializer for XML {
-    fn rods_borrowing_ser<'r, 's, BS>(
-        src: &'s BS,
-        sink: &'r mut Vec<u8>,
-    ) -> Result<usize, IrodsError> 
-        where 's: 'r,
-        BS: BorrowingSerializable<'s>
+    fn rods_borrowing_ser<'r, 's, BS>(src: BS, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
+    where
+        's: 'r,
+        BS: BorrowingSerializable<'s>,
     {
         src.borrowing_xml_serialize(sink)
     }

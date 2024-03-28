@@ -1,10 +1,4 @@
-use std::{
-    fs::File,
-    io::{BufReader},
-    net::TcpStream,
-    path::PathBuf,
-    time::Duration,
-};
+use std::{fs::File, io::BufReader, net::TcpStream, path::PathBuf, time::Duration};
 
 use native_tls::TlsStream;
 use rods_prot_msg::error::errors::IrodsError;
@@ -23,7 +17,6 @@ pub struct IrodsSSLSettings {
 }
 
 impl TryFrom<serde_json::Map<String, serde_json::value::Value>> for IrodsSSLSettings {
-
     type Error = IrodsError;
 
     fn try_from(
