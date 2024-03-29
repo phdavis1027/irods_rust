@@ -12,7 +12,7 @@ use crate::bosd::{
 
 use super::{authenticate::Authenticate, connect::Connect, Account, Connection};
 
-pub struct IrodsPool<T, C, A>
+pub struct IrodsManager<T, C, A>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,
@@ -28,7 +28,7 @@ where
     num_recycles_before_refresh: usize,
 }
 
-impl<T, C, A> IrodsPool<T, C, A>
+impl<T, C, A> IrodsManager<T, C, A>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,
@@ -55,7 +55,7 @@ where
 }
 
 #[async_trait]
-impl<T, C, A> Manager for IrodsPool<T, C, A>
+impl<T, C, A> Manager for IrodsManager<T, C, A>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,

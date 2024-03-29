@@ -1,11 +1,6 @@
 use std::borrow::Cow;
 use std::io::Cursor;
 
-use base64::engine::GeneralPurpose;
-use base64::engine::GeneralPurposeConfig;
-use base64::prelude::BASE64_STANDARD_NO_PAD;
-use base64::{engine, Engine};
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use quick_xml::events::BytesEnd;
 use quick_xml::events::BytesStart;
 use quick_xml::events::BytesText;
@@ -131,7 +126,7 @@ mod tests {
 
         let src = BorrowingStrBuf::new("hello world");
         let mut sink = Vec::new();
-        XML::rods_borrowing_ser(&src, &mut sink).unwrap();
+        XML::rods_borrowing_ser(src, &mut sink).unwrap();
 
         assert_eq!(expected.as_bytes(), sink.as_slice());
     }

@@ -18,6 +18,8 @@ use crate::{
     },
 };
 
+use deadpool::managed::Manager;
+
 use self::{authenticate::Authenticate, connect::Connect};
 use md5::{Digest, Md5};
 use rods_prot_msg::error::errors::IrodsError;
@@ -213,5 +215,42 @@ where
             signature: Vec::with_capacity(16),
             phantom_protocol: PhantomData,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    extern crate tokio;
+
+    use crate::connection::pool::IrodsManager;
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+    use deadpool::managed::{Pool, PoolBuilder};
+    use deadpool_sync::SyncWrapper;
+
+    use super::{authenticate::NativeAuthenticator, connect::TcpConnector};
+    use crate::bosd::xml::XML;
+
+    #[tokio::test]
+    async fn xml_tcp_native_auth() {
+        let authenticator = NativeAuthenticator::new(30, "rods".into());
+
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([172, 18, 0, 3]), 1247));
+        let connector = TcpConnector::new(addr);
+
+        let account = super::Account {
+            client_user: "rods".into(),
+            client_zone: "tempZone".into(),
+            proxy_user: "".into(),
+            proxy_zone: "".into(),
+        };
+
+        let manager: super::pool::IrodsManager<XML, _, _> =
+            super::pool::IrodsManager::new(account, authenticator, connector, 30, 5);
+
+        let pool: Pool<IrodsManager<_, _, _>> =
+            Pool::builder(manager).max_size(16).build().unwrap();
+
+        let mut conn = pool.get().await.unwrap();
     }
 }

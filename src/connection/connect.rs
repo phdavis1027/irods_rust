@@ -49,8 +49,16 @@ where
         self.start(acct, header_buf, msg_buf, unencoded_buf, encoded_buf)
     }
 }
+
+#[derive(Clone)]
 pub struct TcpConnector {
     addr: SocketAddr,
+}
+
+impl TcpConnector {
+    pub fn new(addr: SocketAddr) -> Self {
+        Self { addr }
+    }
 }
 
 impl<T> Connect<T> for TcpConnector
@@ -104,7 +112,7 @@ where
 
         let connection = Connection::new(
             stream,
-            acct.clone(),
+            acct,
             header_buf,
             msg_buf,
             unencoded_buf,
