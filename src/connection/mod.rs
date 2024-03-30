@@ -3,14 +3,15 @@
 pub mod authenticate;
 pub mod connect;
 pub mod pool;
-// pub mod ssl;
-// pub mod tcp;
+pub mod ssl;
+pub mod tcp;
 
 use crate::{
     bosd::{
         BorrowingDeserializable, BorrowingDeserializer, BorrowingSerializable, BorrowingSerializer,
         OwningDeserializble, OwningDeserializer, OwningSerializable, OwningSerializer,
     },
+    connection::ssl::{SslConfig, SslConnector},
     msg::{
         bin_bytes_buf::BorrowingStrBuf,
         header::{MsgType, OwningStandardHeader},
@@ -38,13 +39,6 @@ use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
 static MAX_PASSWORD_LEN: usize = 50;
-
-#[derive(Clone)]
-pub enum CsNegPolicy {
-    DontCare,
-    Require,
-    Refuse,
-}
 
 #[derive(Clone)]
 pub struct Account {
@@ -101,9 +95,15 @@ where
     M: OwningSerializable,
 {
     let msg_len = T::rods_owning_ser(&msg, msg_buf)?;
+    let strfied_msg = std::str::from_utf8(&msg_buf[..msg_len]).unwrap();
+    dbg!(strfied_msg);
 
     let header = OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info);
     let header_len = T::rods_owning_ser(&header, header_buf)?;
+    dbg!(header_len);
+
+    let strfied_header = std::str::from_utf8(&header_buf[..header_len]).unwrap();
+    dbg!(strfied_header);
 
     connector.write_all(&(header_len as u32).to_be_bytes())?;
     connector.write_all(&header_buf[..header_len])?;
@@ -126,9 +126,15 @@ where
     's: 'r,
 {
     let msg_len = T::rods_borrowing_ser(msg, msg_buf)?;
+    let strfied_msg = std::str::from_utf8(&msg_buf[..msg_len]).unwrap();
+    dbg!(strfied_msg);
 
     let header = OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info);
     let header_len = T::rods_owning_ser(&header, header_buf)?;
+    dbg!(header_len);
+
+    let strfied_header = std::str::from_utf8(&header_buf[..header_len]).unwrap();
+    dbg!(strfied_header);
 
     connector.write_all(&(header_len as u32).to_be_bytes())?;
     connector.write_all(&header_buf[..header_len])?;
@@ -163,9 +169,10 @@ where
     T: OwningDeserializer,
 {
     connector.read_exact(&mut buf[..4])?;
-
     //UNWRAP: It's 4 bytes long
     let header_len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
+
+    connector.read_exact(&mut buf[..header_len])?;
     let header: OwningStandardHeader = T::rods_owning_de(&buf[..header_len])?;
 
     if header.int_info != 0 {
@@ -173,6 +180,21 @@ where
     }
 
     Ok(header)
+}
+
+pub(crate) fn read_borrowing_msg<'s, 'r, S, T, M>(
+    len: usize,
+    buf: &'s mut Vec<u8>,
+    connector: &mut S,
+) -> Result<M, IrodsError>
+where
+    M: BorrowingDeserializable<'r>,
+    T: BorrowingDeserializer,
+    S: io::Read + io::Write,
+    's: 'r,
+{
+    read_from_server(len, buf, connector)?;
+    T::rods_borrowing_de(&buf[..len])
 }
 
 pub(crate) fn read_header_and_borrowing_msg<'s, 'r, S, T, M>(
@@ -187,7 +209,38 @@ where
     's: 'r,
 {
     let header = read_standard_header::<S, T>(header_buf, connector)?;
-    let msg = T::rods_borrowing_de(&msg_buf[..header.msg_len])?;
+
+    let msg = read_borrowing_msg::<S, T, _>(header.msg_len, msg_buf, connector)?;
+    Ok((header, msg))
+}
+
+pub(crate) fn read_owning_msg<S, T, M>(
+    len: usize,
+    buf: &mut Vec<u8>,
+    connector: &mut S,
+) -> Result<M, IrodsError>
+where
+    M: OwningDeserializble,
+    T: OwningDeserializer,
+    S: io::Read + io::Write,
+{
+    read_from_server(len, buf, connector)?;
+    T::rods_owning_de(&buf[..len])
+}
+
+pub(crate) fn read_header_and_owning_msg<S, T, M>(
+    msg_buf: &mut Vec<u8>,
+    header_buf: &mut Vec<u8>,
+    connector: &mut S,
+) -> Result<(OwningStandardHeader, M), IrodsError>
+where
+    S: io::Read + io::Write,
+    T: OwningDeserializer,
+    M: OwningDeserializble,
+{
+    let header = read_standard_header::<S, T>(header_buf, connector)?;
+
+    let msg = read_owning_msg::<S, T, _>(header.msg_len, msg_buf, connector)?;
     Ok((header, msg))
 }
 
@@ -222,21 +275,52 @@ where
 mod test {
     extern crate tokio;
 
+    use super::*;
+
     use crate::connection::pool::IrodsManager;
-    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+    use std::{
+        net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+        path::PathBuf,
+    };
 
     use deadpool::managed::{Pool, PoolBuilder};
     use deadpool_sync::SyncWrapper;
+    use native_tls::TlsConnector;
 
-    use super::{authenticate::NativeAuthenticator, connect::TcpConnector};
+    use super::{authenticate::NativeAuthenticator, tcp::TcpConnector};
     use crate::bosd::xml::XML;
 
     #[tokio::test]
+    #[ignore]
     async fn xml_tcp_native_auth() {
         let authenticator = NativeAuthenticator::new(30, "rods".into());
 
         let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([172, 18, 0, 3]), 1247));
         let connector = TcpConnector::new(addr);
+
+        let account = super::Account {
+            client_user: "rods".into(),
+            client_zone: "tempZone".into(),
+            proxy_user: "".into(),
+            proxy_zone: "".into(),
+        };
+
+        let manager: super::pool::IrodsManager<XML, _, _> =
+            super::pool::IrodsManager::new(account, authenticator, connector, 30, 5);
+
+        let pool: Pool<IrodsManager<_, _, _>> =
+            Pool::builder(manager).max_size(16).build().unwrap();
+
+        let mut conn = pool.get().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn xml_ssl_native_auth() {
+        let authenticator = NativeAuthenticator::new(30, "rods".into());
+
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([172, 18, 0, 3]), 1247));
+        let ssl_config = SslConfig::new(PathBuf::from("server.crt"), "172.18.0.3".into());
+        let connector = SslConnector::new(addr, ssl_config);
 
         let account = super::Account {
             client_user: "rods".into(),

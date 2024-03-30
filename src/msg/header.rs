@@ -6,10 +6,13 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use std::io::{self, Cursor, Write};
 
-use crate::{tag, tag_fmt, bosd::{
-    xml::{OwningXMLDeserializable, OwningXMLSerializable},
-    BorrowingSerializable, BorrowingSerializer, OwningSerializable, OwningDeserializble,
-}};
+use crate::{
+    bosd::{
+        xml::{OwningXMLDeserializable, OwningXMLSerializable},
+        BorrowingSerializable, BorrowingSerializer, OwningDeserializble, OwningSerializable,
+    },
+    tag, tag_fmt,
+};
 
 pub const MAX_HEADER_LEN_FOR_XML: usize = 1024;
 
@@ -187,31 +190,30 @@ impl OwningXMLDeserializable for OwningStandardHeader {
                 (State::IntInfoInner, Event::Text(text)) => {
                     int_info = Some(text.unescape()?.parse()?);
 
-                    return Ok(
-                        OwningStandardHeader {
-                            msg_type: msg_type.ok_or(IrodsError::Other(
-                                "Failed to parse field msgType of header".into(),
-                            ))?,
-                            msg_len: msg_len.ok_or(IrodsError::Other(
-                                "Failed to parse field msgLen of header".into(),
-                            ))?,
-                            bs_len: bs_len.ok_or(IrodsError::Other(
-                                "Failed to parse field bsLen of header".into(),
-                            ))?,
-                            error_len: error_len.ok_or(IrodsError::Other(
-                                "Failed to parse field errorLen of header".into(),
-                            ))?,
-                            int_info: int_info.ok_or(IrodsError::Other(
-                                "Failed to parse field intInfo of header".into(),
-                            ))?,
-                        },
-                    );
+                    return Ok(OwningStandardHeader {
+                        msg_type: msg_type.ok_or(IrodsError::Other(
+                            "Failed to parse field msgType of header".into(),
+                        ))?,
+                        msg_len: msg_len.ok_or(IrodsError::Other(
+                            "Failed to parse field msgLen of header".into(),
+                        ))?,
+                        bs_len: bs_len.ok_or(IrodsError::Other(
+                            "Failed to parse field bsLen of header".into(),
+                        ))?,
+                        error_len: error_len.ok_or(IrodsError::Other(
+                            "Failed to parse field errorLen of header".into(),
+                        ))?,
+                        int_info: int_info.ok_or(IrodsError::Other(
+                            "Failed to parse field intInfo of header".into(),
+                        ))?,
+                    });
                 }
 
                 (state, Event::Eof) => {
+                    println!("Bad EOF");
                     return Err(rods_prot_msg::error::errors::IrodsError::Other(format!(
                         "{state:?}"
-                    )))
+                    )));
                 }
                 state => state.0,
             }
@@ -221,7 +223,7 @@ impl OwningXMLDeserializable for OwningStandardHeader {
 
 #[cfg(test)]
 mod test {
-    use crate::{bosd::{xml::XML, OwningSerializer, OwningDeserializer}};
+    use crate::bosd::{xml::XML, OwningDeserializer, OwningSerializer};
 
     use super::*;
 

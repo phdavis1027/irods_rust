@@ -1,110 +1,109 @@
-use std::{fs::File, io::BufReader, net::TcpStream, path::PathBuf, time::Duration};
+use std::{
+    fs::File,
+    io::BufReader,
+    net::{SocketAddr, TcpStream},
+    path::PathBuf,
+    sync::Arc,
+};
 
-use native_tls::TlsStream;
+use native_tls::{Certificate, TlsStream};
 use rods_prot_msg::error::errors::IrodsError;
 
-pub type SslStream = TlsStream<TcpStream>;
+use crate::{
+    bosd::{
+        xml::XML, BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer,
+    },
+    common::CsNegPolicy,
+    connection::read_header_and_owning_msg,
+    msg::{cs_neg::OwningCsNeg, startup_pack::BorrowingStartupPack, version::BorrowingVersion},
+};
 
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-#[derive(Clone)]
-pub struct IrodsSSLSettings {
-    pub hash_rounds: u32,
-    pub key_size: usize,
-    pub salt_size: usize,
-    pub algorithm: String,
+use super::{
+    connect::Connect, read_header_and_borrowing_msg, send_borrowing_msg_and_header, Connection,
+};
+
+pub struct SslConnector {
+    inner: Arc<SslConnectorInner>,
+}
+
+pub struct SslConfig {
     pub cert_file: PathBuf,
     pub domain: String,
 }
 
-impl TryFrom<serde_json::Map<String, serde_json::value::Value>> for IrodsSSLSettings {
-    type Error = IrodsError;
-
-    fn try_from(
-        value: serde_json::Map<String, serde_json::value::Value>,
-    ) -> Result<Self, Self::Error> {
-        let key_size: usize = match value.get("irods_encryption_key_size") {
-            // The key
-            // exists and represents a number
-            // FIXME: Is this clone really necessary?
-            Some(s) => serde_json::from_value(s.clone())?,
-            None => {
-                return Err(IrodsError::Other(
-                    "No key `irods_encryption_key_size` found in `irods_environment.json`".into(),
-                ))
-            }
-        };
-
-        let algorithm: String = match value.get("irods_encryption_algorithm") {
-            Some(s) => serde_json::from_value(s.clone())?,
-            None => {
-                return Err(IrodsError::Other(
-                    "no key `irods_encryption_algorithm` found in irods_environment.json".into(),
-                ))
-            }
-        };
-
-        let salt_size: usize = match value.get("irods_encryption_salt_size") {
-            // The key
-            // exists and represents a number
-            // FIXME: Is this clone really necessary?
-            Some(s) => serde_json::from_value(s.clone())?,
-            None => {
-                return Err(IrodsError::Other(
-                    "no key `irods_encryption_salt_size` found in irods_environment.json".into(),
-                ))
-            }
-        };
-
-        let hash_rounds: u32 = match value.get("irods_encryption_hash_rounds") {
-            // The key
-            // exists and represents a number
-            // FIXME: Is this clone really necessary?
-            Some(s) => serde_json::from_value(s.clone())?,
-            None => {
-                return Err(IrodsError::Other(
-                    "no key `irods_encryption_hash_rounds` found in irods_environment.json".into(),
-                ))
-            }
-        };
-
-        let cert_file: String = match value.get("irods_ca_certificate_file") {
-            // The key
-            // exists and represents a number
-            // FIXME: Is this clone really necessary?
-            Some(s) => serde_json::from_value(s.clone())?,
-            None => {
-                return Err(IrodsError::Other(
-                    "no key `irods_ca_certificate_file` found in irods_environment.json".into(),
-                ))
-            }
-        };
-        let cert_file: PathBuf = cert_file.into();
-
-        // FIXME: I don't think the domain normally lives in iRODS environment
-        Ok(IrodsSSLSettings {
-            cert_file,
-            hash_rounds,
-            salt_size,
-            algorithm,
-            key_size,
-            domain: "localhost".into(),
-        })
+impl SslConfig {
+    pub fn new(cert_file: PathBuf, domain: String) -> Self {
+        Self { cert_file, domain }
     }
 }
 
-impl IrodsSSLSettings {
-    fn from_irods_environment() -> Option<IrodsSSLSettings> {
-        let env = match File::open("/etc/irods_environment.json") {
-            Ok(f) => BufReader::new(f),
-            Err(_) => return None,
-        };
+pub struct SslConnectorInner {
+    pub config: SslConfig,
+    pub addr: SocketAddr,
+}
 
-        let env: serde_json::Map<String, serde_json::value::Value> =
-            match serde_json::from_reader(env).ok() {
-                Some(value) => value,
-                None => return None,
-            };
+impl Clone for SslConnector {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
+}
 
-        env.try_into().ok()
+impl SslConnector {
+    pub fn new(addr: SocketAddr, config: SslConfig) -> Self {
+        Self {
+            inner: Arc::new(SslConnectorInner { config, addr }),
+        }
+    }
+}
+
+impl<T> Connect<T> for SslConnector
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningDeserializer + OwningSerializer,
+{
+    type Transport = TlsStream<TcpStream>;
+
+    fn start(
+        &self,
+        acct: super::Account,
+        mut header_buf: Vec<u8>,
+        mut msg_buf: Vec<u8>,
+        mut unencoded_buf: Vec<u8>,
+        mut encoded_buf: Vec<u8>,
+    ) -> Result<super::Connection<T, Self::Transport>, IrodsError> {
+        let mut stream = TcpStream::connect(self.inner.addr)?;
+
+        let startup_pack = BorrowingStartupPack::new(
+            T::as_enum(),
+            0,
+            0,
+            &acct.proxy_user,
+            &acct.proxy_zone,
+            &acct.client_user,
+            &acct.client_zone,
+            (4, 3, 0),
+            "d",
+            "packe;request_server_negotiation",
+        );
+
+        send_borrowing_msg_and_header::<XML, _, _>(
+            &mut stream,
+            startup_pack,
+            crate::msg::header::MsgType::RodsConnect,
+            0,
+            &mut msg_buf,
+            &mut header_buf,
+        )?;
+
+        let (_, cs_neg): (_, OwningCsNeg) =
+            read_header_and_owning_msg::<_, XML, _>(&mut msg_buf, &mut header_buf, &mut stream)?;
+
+        if cs_neg.status != 1 || cs_neg.result != CsNegPolicy::CS_NEG_REQUIRE {
+            // We can't accept the connection. Send a message saying that
+        }
+
+        todo!()
     }
 }

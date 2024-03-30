@@ -12,7 +12,7 @@ use crate::bosd::xml::BorrowingXMLDeserializable;
 #[cfg_attr(feature = "arbitrary", Arbitrary)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct BorrowingVersion<'s> {
-    pub status: u32,
+    pub status: i32,
     pub rel_version: (u8, u8, u8),
     pub api_version: Cow<'s, str>,
     pub reconn_port: u32,
@@ -69,12 +69,14 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
             CookieInner,
         }
 
-        let mut status: Option<u32> = None;
+        let mut status: Option<i32> = None;
         let mut rel_version: Option<(u8, u8, u8)> = None;
         let mut api_version: Option<Cow<'s, str>> = None;
         let mut reconn_port: Option<u32> = None;
         let mut reconn_addr: Option<Cow<'s, str>> = None;
         let mut cookie: Option<u16> = None;
+
+        println!("Deserializing: {:#?}", std::str::from_utf8(src).unwrap());
 
         let mut reader = quick_xml::reader::Reader::from_reader(src);
 
@@ -86,12 +88,13 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
                 (State::Tag, Event::Start(e)) if e.name().as_ref() == b"Version_PI" => {
                     State::Status
                 }
-                (State::Tag, _) => {
+                (State::Tag, Event::Start(e)) => {
                     return Err(
                         rods_prot_msg::error::errors::IrodsError::UnexpectedResponse(
-                            "Version_PI".into(),
+                            // FIXME: This is excessive
+                            std::str::from_utf8(e.name().as_ref()).unwrap().into(),
                         ),
-                    )
+                    );
                 }
 
                 (State::Status, Event::Start(e)) if e.name().as_ref() == b"status" => {

@@ -1,4 +1,5 @@
 use std::io::{self, Cursor, Read, Write};
+use std::sync::Arc;
 
 use base64::engine::GeneralPurposeConfig;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
@@ -22,7 +23,7 @@ use crate::{
     },
 };
 
-pub trait Authenticate<T, C>
+pub trait Authenticate<T, C>: Clone
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,
@@ -33,10 +34,27 @@ where
     fn authenticate(&self, conn: &mut Connection<T, C>) -> Result<Self::Output, IrodsError>;
 }
 
-#[derive(Clone)]
-pub struct NativeAuthenticator {
+struct NativeAuthenticatorInner {
     a_ttl: u32,
     password: String,
+}
+
+impl NativeAuthenticatorInner {
+    pub fn new(a_ttl: u32, password: String) -> Self {
+        Self { a_ttl, password }
+    }
+}
+
+pub struct NativeAuthenticator {
+    inner: Arc<NativeAuthenticatorInner>,
+}
+
+impl Clone for NativeAuthenticator {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+        }
+    }
 }
 
 impl NativeAuthenticator {
@@ -46,7 +64,9 @@ impl NativeAuthenticator {
     }
 
     pub fn new(a_ttl: u32, password: String) -> Self {
-        Self { a_ttl, password }
+        Self {
+            inner: Arc::new(NativeAuthenticatorInner::new(a_ttl, password)),
+        }
     }
 }
 
@@ -77,7 +97,7 @@ where
             "zone_name": "{2}"
         }}
         "##,
-            self.a_ttl, conn.account.client_user, conn.account.client_zone
+            self.inner.a_ttl, conn.account.client_user, conn.account.client_zone
         )?;
 
         let unencoded_len = unencoded_cursor.position() as usize;
@@ -121,7 +141,7 @@ where
         let mut pad_buf = &mut conn.unencoded_buf[..MAX_PASSWORD_LEN];
 
         pad_buf.fill(0);
-        for (i, c) in self.password.as_bytes().iter().enumerate() {
+        for (i, c) in self.inner.password.as_bytes().iter().enumerate() {
             pad_buf[i] = *c;
         }
         digest.update(pad_buf);
@@ -140,7 +160,7 @@ where
             "zone_name": "{3}",
             "digest": "{4}"
         }}"#,
-            self.a_ttl,
+            self.inner.a_ttl,
             challenge.buf,
             conn.account.client_user,
             conn.account.client_zone,
