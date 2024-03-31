@@ -46,3 +46,37 @@ impl TryFrom<&str> for CsNegPolicy {
         }
     }
 }
+
+#[cfg_attr(test, derive(Debug))]
+pub enum CsNegResult {
+    CS_NEG_FAILURE,
+    CS_NEG_USE_SSL,
+    CS_NEG_USE_TCP,
+}
+
+impl From<&CsNegResult> for &str {
+    fn from(value: &CsNegResult) -> Self {
+        match value {
+            CsNegResult::CS_NEG_FAILURE => "CS_NEG_FAILURE",
+            CsNegResult::CS_NEG_USE_SSL => "CS_NEG_USE_SSL",
+            CsNegResult::CS_NEG_USE_TCP => "CS_NEG_USE_TCP",
+        }
+    }
+}
+
+impl TryFrom<&str> for CsNegResult {
+    type Error = IrodsError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "CS_NEG_FAILURE" => Ok(CsNegResult::CS_NEG_FAILURE),
+            "CS_NEG_USE_SSL" => Ok(CsNegResult::CS_NEG_USE_SSL),
+            "CS_NEG_USE_TCP" => Ok(CsNegResult::CS_NEG_USE_TCP),
+            _ => Err(IrodsError::Other("Invalid value for CsNegResult".into())),
+        }
+    }
+}
+
+pub mod apn {
+    pub const AUTHENTICATION_APN: i32 = 110000;
+}

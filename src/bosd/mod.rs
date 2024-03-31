@@ -1,6 +1,6 @@
 pub mod xml;
 
-use std::io::Cursor;
+use std::{fmt::Debug, io::Cursor};
 
 use rods_prot_msg::error::errors::IrodsError;
 
@@ -50,8 +50,22 @@ pub trait OwningDeserializer: IrodsProtocol {
 /// (Borrowing|Owning)(Serializable|Deserializable) and then add them as beounds
 /// the appropriate traits below.
 
+#[cfg(test)]
+pub trait BorrowingDeserializable<'s>: BorrowingXMLDeserializable<'s> + Debug {}
+#[cfg(not(test))]
 pub trait BorrowingDeserializable<'s>: BorrowingXMLDeserializable<'s> {}
+
+#[cfg(test)]
+pub trait BorrowingSerializable<'s>: BorrowingXMLSerializable<'s> + Debug {}
+#[cfg(not(test))]
 pub trait BorrowingSerializable<'s>: BorrowingXMLSerializable<'s> {}
 
+#[cfg(test)]
+pub trait OwningSerializable: OwningXMLSerializable + Debug {}
+#[cfg(not(test))]
 pub trait OwningSerializable: OwningXMLSerializable {}
+
+#[cfg(test)]
+pub trait OwningDeserializble: OwningXMLDeserializable + Debug {}
+#[cfg(not(test))]
 pub trait OwningDeserializble: OwningXMLDeserializable {}

@@ -10,6 +10,7 @@ use md5::{Digest, Md5};
 use rods_prot_msg::error::errors::IrodsError;
 
 use crate::bosd::xml::XML;
+use crate::common::apn;
 use crate::connection::{
     read_from_server, read_header_and_borrowing_msg, send_borrowing_msg_and_header,
     send_owning_msg_and_header,
@@ -101,6 +102,8 @@ where
         )?;
 
         let unencoded_len = unencoded_cursor.position() as usize;
+        conn.encoded_buf.resize(4 * (unencoded_len / 3) + 1, 0); // Make sure we have enough room
+                                                                 // to store the encoded string.
         let payload_len = b64_engine
             .encode_slice(
                 &unencoded_cursor.get_mut()[..unencoded_len], // UNSAFE: The cursor guarantees we have enough space
@@ -113,20 +116,21 @@ where
             unsafe { std::str::from_utf8_unchecked(&conn.encoded_buf[..payload_len]) };
         let str_buf = BorrowingStrBuf::new(encoded_str);
 
-        // We're being very naughty here and serializing the msg into the
-        // thing called "header" buf. This unfortunate, but I can't think
-        // of a better way to do it right now that gets around the
-        // borrow checker.
-        send_borrowing_msg_and_header::<XML, _, _>(
+        println!(
+            "Sending unencoded string: {:?}",
+            std::str::from_utf8(&unencoded_cursor.get_ref()[..unencoded_len])?
+        );
+
+        send_borrowing_msg_and_header::<T, _, _>(
             &mut conn.connector,
             str_buf,
             MsgType::RodsApiReq,
-            0,
+            apn::AUTHENTICATION_APN,
             &mut conn.msg_buf,
             &mut conn.header_buf,
         );
 
-        let (_, challenge) = read_header_and_borrowing_msg::<_, XML, BorrowingStrBuf>(
+        let (_, challenge) = read_header_and_borrowing_msg::<_, T, BorrowingStrBuf>(
             &mut conn.msg_buf,
             &mut conn.header_buf,
             &mut conn.connector,
@@ -182,7 +186,7 @@ where
             &mut conn.connector,
             str_buf,
             MsgType::RodsApiReq,
-            0,
+            apn::AUTHENTICATION_APN,
             &mut conn.msg_buf,
             &mut conn.header_buf,
         );

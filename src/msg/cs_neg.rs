@@ -1,24 +1,30 @@
-use quick_xml::events::Event;
-use rods_prot_msg::error::errors::IrodsError;
+use quick_xml::events::{BytesEnd, BytesStart, Event};
+use rods_prot_msg::{error::errors::IrodsError, types::MsgType};
+use std::io::{Cursor, Write};
 
 use crate::{
-    bosd::{xml::OwningXMLDeserializable, OwningDeserializble},
-    common::CsNegPolicy,
+    bosd::{
+        xml::{OwningXMLDeserializable, OwningXMLSerializable},
+        OwningDeserializble, OwningSerializable,
+    },
+    common::{CsNegPolicy, CsNegResult},
+    tag_fmt,
 };
 
-pub struct OwningCsNeg {
+#[cfg_attr(test, derive(Debug))]
+pub struct OwningServerCsNeg {
     pub status: i32,
     pub result: CsNegPolicy,
 }
 
-impl OwningCsNeg {
+impl OwningServerCsNeg {
     pub fn new(status: i32, result: CsNegPolicy) -> Self {
         Self { status, result }
     }
 }
 
-impl OwningDeserializble for OwningCsNeg {}
-impl OwningXMLDeserializable for OwningCsNeg {
+impl OwningDeserializble for OwningServerCsNeg {}
+impl OwningXMLDeserializable for OwningServerCsNeg {
     fn owning_xml_deserialize(src: &[u8]) -> Result<Self, IrodsError> {
         #[derive(Debug)]
         #[repr(u8)]
@@ -65,5 +71,37 @@ impl OwningXMLDeserializable for OwningCsNeg {
                 state => state.0,
             }
         }
+    }
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub struct OwningClientCsNeg {
+    pub status: i32,
+    pub result: CsNegResult,
+}
+
+impl OwningClientCsNeg {
+    pub fn new(status: i32, result: CsNegResult) -> Self {
+        Self { status, result }
+    }
+}
+
+impl OwningSerializable for OwningClientCsNeg {}
+
+impl OwningXMLSerializable for OwningClientCsNeg {
+    fn owning_xml_serialize(&self, buf: &mut Vec<u8>) -> Result<usize, IrodsError> {
+        let mut cursor = Cursor::new(buf);
+        let mut writer = quick_xml::Writer::new(&mut cursor);
+
+        writer.write_event(Event::Start(BytesStart::new("CS_NEG_PI")))?;
+
+        tag_fmt!(writer, "status", "{}", self.status);
+
+        let result: &str = (&self.result).into();
+        tag_fmt!(writer, "result", "cs_neg_result_kw={}", result);
+
+        writer.write_event(Event::End(BytesEnd::new("CS_NEG_PI")))?;
+
+        Ok(cursor.position() as usize)
     }
 }

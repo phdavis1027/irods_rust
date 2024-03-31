@@ -14,7 +14,7 @@ use crate::{
     connection::ssl::{SslConfig, SslConnector},
     msg::{
         bin_bytes_buf::BorrowingStrBuf,
-        header::{MsgType, OwningStandardHeader},
+        header::{BorrowingHandshakeHeader, MsgType, OwningStandardHeader},
         version::BorrowingVersion,
     },
 };
@@ -174,12 +174,33 @@ where
 
     connector.read_exact(&mut buf[..header_len])?;
     let header: OwningStandardHeader = T::rods_owning_de(&buf[..header_len])?;
+    #[cfg(test)]
+    {
+        let recv_strfied_header = std::str::from_utf8(&buf[..header_len]).unwrap();
+        dbg!(recv_strfied_header);
+    }
 
     if header.int_info != 0 {
         return Err(IrodsError::Other("int_info is not 0".to_string()));
     }
 
     Ok(header)
+}
+
+pub fn send_borrowing_handshake_header<'s, 'r, S, T>(
+    connector: &mut S,
+    header: BorrowingHandshakeHeader<'s>,
+    buf: &'r mut Vec<u8>,
+) -> Result<(), IrodsError>
+where
+    S: std::io::Write,
+    T: BorrowingSerializer,
+    's: 'r,
+{
+    let header_len = T::rods_borrowing_ser(header, buf)?;
+    connector.write_all(&(header_len as u32).to_be_bytes())?;
+    connector.write_all(&buf[..header_len])?;
+    Ok(())
 }
 
 pub(crate) fn read_borrowing_msg<'s, 'r, S, T, M>(
@@ -194,6 +215,11 @@ where
     's: 'r,
 {
     read_from_server(len, buf, connector)?;
+    #[cfg(test)]
+    {
+        let recv_strfied_msg = std::str::from_utf8(&buf[..len]).unwrap();
+        dbg!(recv_strfied_msg);
+    }
     T::rods_borrowing_de(&buf[..len])
 }
 
@@ -220,11 +246,16 @@ pub(crate) fn read_owning_msg<S, T, M>(
     connector: &mut S,
 ) -> Result<M, IrodsError>
 where
-    M: OwningDeserializble,
-    T: OwningDeserializer,
     S: io::Read + io::Write,
+    T: OwningDeserializer,
+    M: OwningDeserializble,
 {
     read_from_server(len, buf, connector)?;
+    #[cfg(test)]
+    {
+        let recv_strfied_msg = std::str::from_utf8(&buf[..len]).unwrap();
+        dbg!(recv_strfied_msg);
+    }
     T::rods_owning_de(&buf[..len])
 }
 
@@ -241,6 +272,7 @@ where
     let header = read_standard_header::<S, T>(header_buf, connector)?;
 
     let msg = read_owning_msg::<S, T, _>(header.msg_len, msg_buf, connector)?;
+
     Ok((header, msg))
 }
 
@@ -250,7 +282,7 @@ where
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
-    pub fn new(
+    pub(crate) fn new(
         connector: C,
         account: Account,
         header_buf: Vec<u8>,
@@ -291,7 +323,6 @@ mod test {
     use crate::bosd::xml::XML;
 
     #[tokio::test]
-    #[ignore]
     async fn xml_tcp_native_auth() {
         let authenticator = NativeAuthenticator::new(30, "rods".into());
 
@@ -315,11 +346,19 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn xml_ssl_native_auth() {
         let authenticator = NativeAuthenticator::new(30, "rods".into());
 
         let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([172, 18, 0, 3]), 1247));
-        let ssl_config = SslConfig::new(PathBuf::from("server.crt"), "172.18.0.3".into());
+        let ssl_config = SslConfig::new(
+            PathBuf::from("server.crt"),
+            "localhost".into(),
+            32,
+            8,
+            16,
+            "AES-256-CBC".into(),
+        );
         let connector = SslConnector::new(addr, ssl_config);
 
         let account = super::Account {

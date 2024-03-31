@@ -8,7 +8,7 @@ use std::io::{self, Cursor, Write};
 
 use crate::{
     bosd::{
-        xml::{OwningXMLDeserializable, OwningXMLSerializable},
+        xml::{BorrowingXMLSerializable, OwningXMLDeserializable, OwningXMLSerializable},
         BorrowingSerializable, BorrowingSerializer, OwningDeserializble, OwningSerializable,
     },
     tag, tag_fmt,
@@ -221,6 +221,49 @@ impl OwningXMLDeserializable for OwningStandardHeader {
     }
 }
 
+#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
+pub struct BorrowingHandshakeHeader<'s> {
+    algo: &'s str,
+    key_size: usize,
+    salt_size: usize,
+    hash_rounds: usize,
+}
+
+impl<'s> BorrowingHandshakeHeader<'s> {
+    pub fn new(algo: &'s str, key_size: usize, salt_size: usize, hash_rounds: usize) -> Self {
+        Self {
+            algo,
+            key_size,
+            salt_size,
+            hash_rounds,
+        }
+    }
+}
+
+impl<'s> BorrowingSerializable<'s> for BorrowingHandshakeHeader<'s> {}
+
+impl<'s> BorrowingXMLSerializable<'s> for BorrowingHandshakeHeader<'s> {
+    fn borrowing_xml_serialize<'r>(self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
+    where
+        's: 'r,
+    {
+        let mut cursor = Cursor::new(sink);
+        let mut writer = Writer::new(&mut cursor);
+
+        writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
+
+        tag!(writer, "type", self.algo);
+        tag_fmt!(writer, "msgLen", "{}", self.key_size);
+        tag_fmt!(writer, "errorLen", "{}", self.salt_size);
+        tag_fmt!(writer, "bsLen", "{}", self.hash_rounds);
+        tag!(writer, "intInfo", "0");
+
+        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")))?;
+
+        Ok(cursor.position() as usize)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use crate::bosd::{xml::XML, OwningDeserializer, OwningSerializer};
@@ -266,7 +309,6 @@ mod test {
         "##
         .to_string();
         src.retain(|c| !c.is_whitespace());
-        let deserializer = XML {};
 
         let expected = OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0);
 
@@ -274,5 +316,30 @@ mod test {
             expected,
             XML::rods_owning_de::<OwningStandardHeader>(src.as_bytes()).unwrap()
         );
+    }
+
+    #[test]
+    fn borrowing_handshake_header_serialize_correctly() {
+        let header = BorrowingHandshakeHeader::new("SHA512", 64, 32, 1000);
+
+        let mut expected = r##"
+            <MsgHeader_PI>
+                <type>SHA512</type>
+                <msgLen>64</msgLen>
+                <errorLen>32</errorLen>
+                <bsLen>1000</bsLen>
+                <intInfo>0</intInfo>
+            </MsgHeader_PI>
+        "##
+        .to_string();
+        expected.retain(|c| !c.is_whitespace());
+
+        let mut buffer = Vec::new();
+        let bytes_written = XML::rods_borrowing_ser(header, &mut buffer).unwrap();
+
+        let result = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
+
+        assert_eq!(bytes_written, expected.as_bytes().len());
+        assert_eq!(result, expected.as_str());
     }
 }

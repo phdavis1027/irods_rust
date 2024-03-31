@@ -1,25 +1,32 @@
 use std::{
     fs::File,
-    io::BufReader,
+    io::{BufReader, Read, Write},
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     sync::Arc,
 };
 
-use native_tls::{Certificate, TlsStream};
+use native_tls::{Certificate, TlsConnector, TlsStream};
+use rand::{random, RngCore};
 use rods_prot_msg::error::errors::IrodsError;
 
 use crate::{
     bosd::{
         xml::XML, BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer,
     },
-    common::CsNegPolicy,
-    connection::read_header_and_owning_msg,
-    msg::{cs_neg::OwningCsNeg, startup_pack::BorrowingStartupPack, version::BorrowingVersion},
+    common::{CsNegPolicy, CsNegResult},
+    connection::{read_header_and_owning_msg, send_owning_msg_and_header},
+    msg::{
+        cs_neg::{OwningClientCsNeg, OwningServerCsNeg},
+        header::BorrowingHandshakeHeader,
+        startup_pack::BorrowingStartupPack,
+        version::BorrowingVersion,
+    },
 };
 
 use super::{
-    connect::Connect, read_header_and_borrowing_msg, send_borrowing_msg_and_header, Connection,
+    connect::Connect, read_header_and_borrowing_msg, send_borrowing_handshake_header,
+    send_borrowing_msg_and_header, Connection,
 };
 
 pub struct SslConnector {
@@ -29,11 +36,29 @@ pub struct SslConnector {
 pub struct SslConfig {
     pub cert_file: PathBuf,
     pub domain: String,
+    pub key_size: usize,
+    pub salt_size: usize,
+    pub hash_rounds: usize,
+    algorithm: String,
 }
 
 impl SslConfig {
-    pub fn new(cert_file: PathBuf, domain: String) -> Self {
-        Self { cert_file, domain }
+    pub fn new(
+        cert_file: PathBuf,
+        domain: String,
+        key_size: usize,
+        salt_size: usize,
+        hash_rounds: usize,
+        algorithm: String,
+    ) -> Self {
+        Self {
+            cert_file,
+            domain,
+            key_size,
+            salt_size,
+            hash_rounds,
+            algorithm,
+        }
     }
 }
 
@@ -85,7 +110,7 @@ where
             &acct.client_zone,
             (4, 3, 0),
             "d",
-            "packe;request_server_negotiation",
+            "request_server_negotiation;",
         );
 
         send_borrowing_msg_and_header::<XML, _, _>(
@@ -97,13 +122,62 @@ where
             &mut header_buf,
         )?;
 
-        let (_, cs_neg): (_, OwningCsNeg) =
+        let (_, cs_neg): (_, OwningServerCsNeg) =
             read_header_and_owning_msg::<_, XML, _>(&mut msg_buf, &mut header_buf, &mut stream)?;
 
         if cs_neg.status != 1 || cs_neg.result != CsNegPolicy::CS_NEG_REQUIRE {
             // We can't accept the connection. Send a message saying that
         }
 
-        todo!()
+        let client_cs_neg = OwningClientCsNeg::new(1, CsNegResult::CS_NEG_USE_SSL);
+        send_owning_msg_and_header::<XML, _, _>(
+            &mut stream,
+            client_cs_neg,
+            crate::msg::header::MsgType::RodsCsNeg,
+            0,
+            &mut msg_buf,
+            &mut header_buf,
+        );
+
+        let (_, version): (_, BorrowingVersion) =
+            read_header_and_borrowing_msg::<_, XML, _>(&mut msg_buf, &mut header_buf, &mut stream)?;
+
+        // Tls only zone from here on
+        let connector = TlsConnector::builder()
+            .add_root_certificate(Certificate::from_pem(&std::fs::read(
+                self.inner.config.cert_file.clone(),
+            )?)?)
+            .danger_accept_invalid_certs(true) // FIXME: Bad, only for testing
+            .build()?;
+
+        let mut stream = connector.connect(&self.inner.config.domain, stream)?;
+
+        let ssl_config_header = BorrowingHandshakeHeader::new(
+            &self.inner.config.algorithm,
+            self.inner.config.key_size,
+            self.inner.config.salt_size,
+            self.inner.config.hash_rounds,
+        );
+        send_borrowing_handshake_header::<_, T>(&mut stream, ssl_config_header, &mut msg_buf)?;
+
+        let shared_secret = &mut msg_buf[..self.inner.config.key_size]; // FIXME: Generate a real shared secret
+        rand::thread_rng().fill_bytes(shared_secret);
+
+        let shared_secret_header = BorrowingHandshakeHeader::new(
+            "SHARED_SECRET",
+            usize::from_be_bytes((&shared_secret[..8]).try_into().unwrap()),
+            0,
+            0,
+        );
+        send_borrowing_handshake_header::<_, T>(&mut stream, shared_secret_header, &mut msg_buf)?;
+
+        Ok(Connection::new(
+            stream,
+            acct,
+            header_buf,
+            msg_buf,
+            unencoded_buf,
+            encoded_buf,
+        ))
     }
 }
