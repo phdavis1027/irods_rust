@@ -521,6 +521,7 @@ dependencies = [
  "rand",
  "rods_prot_msg",
  "serde",
+ "serde_derive",
  "serde_json",
  "tokio",
 ]

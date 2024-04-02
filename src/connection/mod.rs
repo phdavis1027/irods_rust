@@ -38,7 +38,7 @@ use base64::{encoded_len, engine::GeneralPurpose};
 use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 
-static MAX_PASSWORD_LEN: usize = 50;
+const MAX_PASSWORD_LEN: usize = 50;
 
 #[derive(Clone)]
 pub struct Account {
@@ -126,15 +126,8 @@ where
     's: 'r,
 {
     let msg_len = T::rods_borrowing_ser(msg, msg_buf)?;
-    let strfied_msg = std::str::from_utf8(&msg_buf[..msg_len]).unwrap();
-    dbg!(strfied_msg);
-
     let header = OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info);
     let header_len = T::rods_owning_ser(&header, header_buf)?;
-    dbg!(header_len);
-
-    let strfied_header = std::str::from_utf8(&header_buf[..header_len]).unwrap();
-    dbg!(strfied_header);
 
     connector.write_all(&(header_len as u32).to_be_bytes())?;
     connector.write_all(&header_buf[..header_len])?;
@@ -168,9 +161,12 @@ where
     S: io::Read + io::Write,
     T: OwningDeserializer,
 {
+    println!("Reading header");
     connector.read_exact(&mut buf[..4])?;
-    //UNWRAP: It's 4 bytes long
     let header_len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
+
+    println!("Header length: {}", header_len);
+    //UNWRAP: It's 4 bytes long
 
     connector.read_exact(&mut buf[..header_len])?;
     let header: OwningStandardHeader = T::rods_owning_de(&buf[..header_len])?;
@@ -332,8 +328,8 @@ mod test {
         let account = super::Account {
             client_user: "rods".into(),
             client_zone: "tempZone".into(),
-            proxy_user: "".into(),
-            proxy_zone: "".into(),
+            proxy_user: "rods".into(),
+            proxy_zone: "tempZone".into(),
         };
 
         let manager: super::pool::IrodsManager<XML, _, _> =
@@ -364,8 +360,8 @@ mod test {
         let account = super::Account {
             client_user: "rods".into(),
             client_zone: "tempZone".into(),
-            proxy_user: "".into(),
-            proxy_zone: "".into(),
+            proxy_user: "rods".into(),
+            proxy_zone: "tempZone".into(),
         };
 
         let manager: super::pool::IrodsManager<XML, _, _> =

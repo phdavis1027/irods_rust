@@ -76,8 +76,6 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
         let mut reconn_addr: Option<Cow<'s, str>> = None;
         let mut cookie: Option<u16> = None;
 
-        println!("Deserializing: {:#?}", std::str::from_utf8(src).unwrap());
-
         let mut reader = quick_xml::reader::Reader::from_reader(src);
 
         let mut state = State::Tag;

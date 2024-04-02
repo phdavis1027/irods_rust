@@ -96,15 +96,15 @@ impl OwningXMLSerializable for OwningStandardHeader {
         writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
 
         tag!(writer, "type", (&self.msg_type).into());
-
         tag_fmt!(writer, "msgLen", "{}", self.msg_len);
-        tag_fmt!(writer, "bsLen", "{}", self.bs_len);
         tag_fmt!(writer, "errorLen", "{}", self.error_len);
+        tag_fmt!(writer, "bsLen", "{}", self.bs_len);
         tag_fmt!(writer, "intInfo", "{}", self.int_info);
 
-        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")));
+        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")))?;
+        let len = cursor.position() as usize;
 
-        Ok(cursor.position() as usize)
+        Ok(len)
     }
 }
 
@@ -210,7 +210,6 @@ impl OwningXMLDeserializable for OwningStandardHeader {
                 }
 
                 (state, Event::Eof) => {
-                    println!("Bad EOF");
                     return Err(rods_prot_msg::error::errors::IrodsError::Other(format!(
                         "{state:?}"
                     )));
@@ -279,8 +278,8 @@ mod test {
             <MsgHeader_PI>
                 <type>RODS_CONNECT</type>
                 <msgLen>10</msgLen>
-                <bsLen>0</bsLen>
                 <errorLen>0</errorLen>
+                <bsLen>0</bsLen>
                 <intInfo>0</intInfo>
             </MsgHeader_PI>
         "##

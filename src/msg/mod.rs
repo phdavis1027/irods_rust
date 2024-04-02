@@ -4,6 +4,8 @@ pub mod header;
 pub mod startup_pack;
 pub mod version;
 
+extern crate serde;
+
 use std::io::{self, Read, Write};
 
 use quick_xml::{events::Event, Writer};

@@ -8,9 +8,11 @@ use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use md5::{Digest, Md5};
 use rods_prot_msg::error::errors::IrodsError;
+use serde::Deserialize;
+use std::borrow::{BorrowMut, Cow};
 
 use crate::bosd::xml::XML;
-use crate::common::apn;
+use crate::common::apn::{self, AUTHENTICATION_APN};
 use crate::connection::{
     read_from_server, read_header_and_borrowing_msg, send_borrowing_msg_and_header,
     send_owning_msg_and_header,
@@ -23,6 +25,30 @@ use crate::{
         header::{MsgType, OwningStandardHeader},
     },
 };
+
+#[derive(Deserialize)]
+pub struct AuthAgentAuthResponse<'s> {
+    #[serde(borrow)]
+    a_ttl: Cow<'s, str>,
+
+    #[serde(borrow)]
+    force_password_prompt: Cow<'s, str>,
+
+    #[serde(borrow)]
+    next_operation: Cow<'s, str>,
+
+    #[serde(borrow)]
+    request_result: Cow<'s, str>,
+
+    #[serde(borrow)]
+    scheme: Cow<'s, str>,
+
+    #[serde(borrow)]
+    user_name: Cow<'s, str>,
+
+    #[serde(borrow)]
+    zone_name: Cow<'s, str>,
+}
 
 pub trait Authenticate<T, C>: Clone
 where
@@ -80,6 +106,8 @@ where
     type Output = Vec<u8>;
 
     fn authenticate(&self, conn: &mut Connection<T, C>) -> Result<Self::Output, IrodsError> {
+        let mut signature = Vec::with_capacity(16);
+
         let b64_engine = Self::create_base64_engine();
 
         // UNSAFE: Connection buffers are always initialized with
@@ -116,11 +144,6 @@ where
             unsafe { std::str::from_utf8_unchecked(&conn.encoded_buf[..payload_len]) };
         let str_buf = BorrowingStrBuf::new(encoded_str);
 
-        println!(
-            "Sending unencoded string: {:?}",
-            std::str::from_utf8(&unencoded_cursor.get_ref()[..unencoded_len])?
-        );
-
         send_borrowing_msg_and_header::<T, _, _>(
             &mut conn.connector,
             str_buf,
@@ -136,21 +159,43 @@ where
             &mut conn.connector,
         )?;
 
+        // decode the challenge buffer
+        // we know the challenge buffer is long enough to hold the decoded value
+        // because base64 makes strings lsonger
+        let payload_len = b64_engine
+            .decode_slice(challenge.buf.as_bytes(), &mut conn.unencoded_buf)
+            .map_err(|e| IrodsError::Other(format!("Failed to decode challenge: {:?}", e)))?;
+
+        let challenge_str = unsafe {
+            std::str::from_utf8_unchecked(conn.unencoded_buf.get(..payload_len - 1).unwrap())
+        };
+
+        let request_result = serde_json::from_str::<AuthAgentAuthResponse>(challenge_str)
+            .map_err(|e| IrodsError::Other(format!("Failed to parse challenge: {:?}", e)))?
+            .request_result;
+
+        // Can't use copy because Cow doesn't give mutable access to borrowed values
+        for (i, c) in request_result.as_bytes().iter().take(16).enumerate() {
+            signature.push(*c);
+        }
+
         // This is fine because the Md5 state only
         // takes up a 4-length array of u32s
         let mut digest = Md5::new();
-        digest.update(challenge.buf.as_bytes());
+        digest.update(request_result.as_bytes());
 
         // Briefly repurpose the unencoded buf
         let mut pad_buf = &mut conn.unencoded_buf[..MAX_PASSWORD_LEN];
-
         pad_buf.fill(0);
+        // TODO: There simply must be a way to use std::io::copy here
         for (i, c) in self.inner.password.as_bytes().iter().enumerate() {
             pad_buf[i] = *c;
         }
-        digest.update(pad_buf);
+        digest.update(pad_buf); //BORROWEND: pad_buf
 
         let mut unencoded_cursor = Cursor::new(&mut conn.unencoded_buf);
+        // TODO: Some slice kung fu to make get rid of the allocation inucrred
+        // by STANDARD.encode
         write!(
             unencoded_cursor,
             r#"
@@ -158,28 +203,31 @@ where
             "a_ttl": {0},
             "force_password_prompt": "true",
             "next_operation": "auth_agent_auth_response",
-            "request_result": "{1}",
             "scheme": "native",
-            "user_name": "{2}",
-            "zone_name": "{3}",
-            "digest": "{4}"
+            "user_name": "{1}",
+            "zone_name": "{2}",
+            "digest": "{3}"
         }}"#,
             self.inner.a_ttl,
-            challenge.buf,
             conn.account.client_user,
             conn.account.client_zone,
             STANDARD.encode(digest.finalize())
         );
 
         let unencoded_len = unencoded_cursor.position() as usize;
+        conn.encoded_buf.resize(5 * (unencoded_len / 3) + 1, 0); // Make sure we have enough room
         let payload_len = b64_engine
             .encode_slice(
                 &unencoded_cursor.get_mut()[..unencoded_len],
                 conn.encoded_buf.as_mut_slice(),
             )
-            .map_err(|e| IrodsError::Other("FIXME: This sucks".into()))?;
+            .map_err(|e| {
+                println!("Error: {:?}", e);
+                IrodsError::Other("FIXME: This sucks".into())
+            })?;
 
-        let encoded_str = unsafe { std::str::from_utf8_unchecked(&conn.encoded_buf) };
+        let encoded_str =
+            unsafe { std::str::from_utf8_unchecked(&conn.encoded_buf[..payload_len]) };
         let str_buf = BorrowingStrBuf::new(encoded_str);
 
         send_borrowing_msg_and_header::<XML, _, _>(
@@ -197,6 +245,6 @@ where
             &mut conn.connector,
         )?;
 
-        Ok(Vec::new())
+        Ok(signature)
     }
 }

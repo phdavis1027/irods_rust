@@ -44,7 +44,7 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStrBuf<'s> {
 
         writer.write_event(Event::Start(BytesStart::new("BinBytesBuf_PI")))?;
 
-        tag_fmt!(writer, "bufLen", "{}", self.buf.len());
+        tag_fmt!(writer, "buflen", "{}", self.buf.len());
 
         tag!(writer, "buf", &self.buf);
 
@@ -80,7 +80,7 @@ impl<'r> BorrowingXMLDeserializable<'r> for BorrowingStrBuf<'r> {
                 (State::Tag, Event::Start(ref e)) if e.name().as_ref() == b"BinBytesBuf_PI" => {
                     State::BufLen
                 }
-                (State::BufLen, Event::Start(ref e)) if e.name().as_ref() == b"bufLen" => {
+                (State::BufLen, Event::Start(ref e)) if e.name().as_ref() == b"buflen" => {
                     State::BufLenInner
                 }
                 (State::BufLenInner, Event::Text(_)) => {
@@ -113,7 +113,7 @@ mod tests {
     fn test_borrowing_str_buf_deserializes_correctly() {
         let expected = BorrowingStrBuf::new("hello world");
 
-        let src = r#"<BinBytesBuf_PI><bufLen>11</bufLen><buf>hello world</buf></BinBytesBuf_PI>"#;
+        let src = r#"<BinBytesBuf_PI><buflen>11</buflen><buf>hello world</buf></BinBytesBuf_PI>"#;
         let result: BorrowingStrBuf = XML::rods_borrowing_de(src.as_bytes()).unwrap();
 
         assert_eq!(expected, result);
@@ -122,7 +122,7 @@ mod tests {
     #[test]
     fn test_borrowing_str_buf_serializes_correctly() {
         let expected =
-            r#"<BinBytesBuf_PI><bufLen>11</bufLen><buf>hello world</buf></BinBytesBuf_PI>"#;
+            r#"<BinBytesBuf_PI><buflen>11</buflen><buf>hello world</buf></BinBytesBuf_PI>"#;
 
         let src = BorrowingStrBuf::new("hello world");
         let mut sink = Vec::new();
