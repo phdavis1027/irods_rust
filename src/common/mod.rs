@@ -1,3 +1,5 @@
+pub mod kw;
+
 use rods_prot_msg::error::errors::IrodsError;
 
 #[cfg_attr(test, derive(Debug))]

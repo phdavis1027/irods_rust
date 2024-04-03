@@ -95,15 +95,8 @@ where
     M: OwningSerializable,
 {
     let msg_len = T::rods_owning_ser(&msg, msg_buf)?;
-    let strfied_msg = std::str::from_utf8(&msg_buf[..msg_len]).unwrap();
-    dbg!(strfied_msg);
-
     let header = OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info);
     let header_len = T::rods_owning_ser(&header, header_buf)?;
-    dbg!(header_len);
-
-    let strfied_header = std::str::from_utf8(&header_buf[..header_len]).unwrap();
-    dbg!(strfied_header);
 
     connector.write_all(&(header_len as u32).to_be_bytes())?;
     connector.write_all(&header_buf[..header_len])?;
@@ -161,20 +154,11 @@ where
     S: io::Read + io::Write,
     T: OwningDeserializer,
 {
-    println!("Reading header");
     connector.read_exact(&mut buf[..4])?;
     let header_len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
 
-    println!("Header length: {}", header_len);
-    //UNWRAP: It's 4 bytes long
-
     connector.read_exact(&mut buf[..header_len])?;
     let header: OwningStandardHeader = T::rods_owning_de(&buf[..header_len])?;
-    #[cfg(test)]
-    {
-        let recv_strfied_header = std::str::from_utf8(&buf[..header_len]).unwrap();
-        dbg!(recv_strfied_header);
-    }
 
     if header.int_info != 0 {
         return Err(IrodsError::Other("int_info is not 0".to_string()));
