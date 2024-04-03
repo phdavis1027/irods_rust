@@ -105,3 +105,29 @@ impl OwningXMLSerializable for OwningClientCsNeg {
         Ok(cursor.position() as usize)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::common::CsNegResult;
+
+    #[test]
+    fn client_cs_neg_serialize_correctly() {
+        let cs_neg = OwningClientCsNeg::new(0, CsNegResult::CS_NEG_USE_SSL);
+
+        let mut buf = Vec::new();
+        cs_neg.owning_xml_serialize(&mut buf).unwrap();
+
+        let expected = r#"<CS_NEG_PI><status>0</status><result>cs_neg_result_kw=CS_NEG_USE_SSL</result></CS_NEG_PI>"#;
+        assert_eq!(String::from_utf8(buf).unwrap(), expected);
+    }
+
+    #[test]
+    fn server_cs_neg_deserialize_correctly() {
+        let src = r#"<CS_NEG_PI><status>0</status><result>CS_NEG_REFUSE</result></CS_NEG_PI>"#;
+        let cs_neg = OwningServerCsNeg::owning_xml_deserialize(src.as_bytes()).unwrap();
+
+        assert_eq!(cs_neg.status, 0);
+        assert_eq!(cs_neg.result, CsNegPolicy::CS_NEG_REFUSE);
+    }
+}
