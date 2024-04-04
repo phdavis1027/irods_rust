@@ -13,8 +13,8 @@ use crate::common::IrodsProt;
 /// the start of the function. This is because the buffer is reused across multiple calls to
 /// the serialization functions.
 use self::xml::{
-    BorrowingXMLDeserializable, BorrowingXMLSerializable, OwningXMLDeserializable,
-    OwningXMLSerializable,
+    BorrowingXMLDeserializable, BorrowingXMLSerializable, BorrowingXMLSerializableChild,
+    OwningXMLDeserializable, OwningXMLSerializable,
 };
 
 pub trait IrodsProtocol {
@@ -69,3 +69,8 @@ pub trait OwningSerializable: OwningXMLSerializable {}
 pub trait OwningDeserializble: OwningXMLDeserializable + Debug {}
 #[cfg(not(test))]
 pub trait OwningDeserializble: OwningXMLDeserializable {}
+
+#[cfg(test)]
+pub trait BorrowingSerializableChild<'s>: BorrowingXMLSerializableChild<'s> + Debug {}
+#[cfg(not(test))]
+pub trait BorrowingSerializableChild<'s>: BorrowingXMLSerializableChild<'s> {}

@@ -1,3 +1,6 @@
+use std::io::Cursor;
+
+use quick_xml::Writer;
 use rods_prot_msg::error::errors::IrodsError;
 
 use crate::common::IrodsProt;
@@ -55,6 +58,17 @@ pub trait OwningXMLDeserializable {
 
 pub trait OwningXMLSerializable {
     fn owning_xml_serialize(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError>;
+}
+
+pub trait BorrowingXMLSerializableChild<'s> {
+    fn borrowing_xml_serialize_child<'r, 't1, 't2>(
+        self,
+        writer: &'r mut Writer<&'t1 mut Cursor<&'t2 mut Vec<u8>>>,
+    ) -> Result<(), IrodsError>
+    where
+        's: 'r,
+        's: 't1,
+        's: 't2;
 }
 
 /// Basically all the xml impl of these traits does is

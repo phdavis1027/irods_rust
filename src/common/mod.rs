@@ -1,4 +1,4 @@
-pub mod kw;
+pub mod cond_input_kw;
 
 use rods_prot_msg::error::errors::IrodsError;
 
