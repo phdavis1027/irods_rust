@@ -27,12 +27,12 @@ pub struct BorrowingDataObjInp<'s> {
 }
 
 impl<'s> BorrowingDataObjInp<'s> {
-    fn new(path: &'s str, opr_type: OprType) -> Self {
+    pub(crate) fn new(path: &'s str, opr_type: OprType, open_flags: i32) -> Self {
         Self {
             path,
             opr_type,
             create_mode: 0,
-            open_flags: 0,
+            open_flags,
             offset: 0,
             data_size: 0,
             num_threads: 0,
@@ -98,7 +98,8 @@ mod test {
 
     #[test]
     fn test_borrowing_data_obj_inp() {
-        let data_obj_inp = BorrowingDataObjInp::new("path/to/data", OprType::Put);
+        let data_obj_inp =
+            BorrowingDataObjInp::new("path/to/data", OprType::Put, OpenFlags::ReadOnly as i32);
 
         let mut sink = Vec::new();
         data_obj_inp.borrowing_xml_serialize(&mut sink).unwrap();

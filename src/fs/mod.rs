@@ -1,3 +1,6 @@
+pub mod file_system;
+pub mod transfer_context;
+
 /*
 #define S_IRWXU 0000700    /* RWX mask for owner */
 #define S_IRUSR 0000400    /* R for owner */
@@ -33,10 +36,17 @@ pub enum CreateMode {
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub enum OpenFlags {}
+pub enum OpenFlags {
+    ReadOnly = 0,
+    WriteOnly = 1,
+    ReadWrite = 2,
+    Create = 0o100,
+    Truncate = 0o1000,
+}
 
 #[cfg_attr(test, derive(Debug))]
 pub enum OprType {
+    No = 0,
     Done = 9999,
     Put = 1,
     Get = 2,
