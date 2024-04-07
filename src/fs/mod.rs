@@ -1,6 +1,3 @@
-pub mod file_system;
-pub mod transfer_context;
-
 /*
 #define S_IRWXU 0000700    /* RWX mask for owner */
 #define S_IRUSR 0000400    /* R for owner */
@@ -22,6 +19,20 @@ pub mod transfer_context;
 #define S_ISVTX 0001000    /* save swapped text even after use */
 */
 
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
+
+use rods_prot_msg::{error::errors::IrodsError, types::DataObjInpPI};
+
+use crate::{
+    bosd::{BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer},
+    common::cond_input_kw::CondInputKw,
+    connection::{send_borrowing_msg_and_header, Connection},
+    msg::data_obj_inp::BorrowingDataObjInp,
+};
+
 #[cfg_attr(test, derive(Debug))]
 pub enum CreateMode {
     OwnerRead = 0o400,
@@ -36,7 +47,7 @@ pub enum CreateMode {
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub enum OpenFlags {
+pub enum OpenFlag {
     ReadOnly = 0,
     WriteOnly = 1,
     ReadWrite = 2,
@@ -72,4 +83,84 @@ pub enum OprType {
     RenameUnknownType = 22,
     RemoteZone = 24,
     Unreg = 26,
+}
+
+pub type DataObjectHandle = i32;
+
+fn create_open_inp<'s, 'r>(
+    path: &'s str,
+    resc: Option<&'s str>,
+    open_flags: i32,
+) -> BorrowingDataObjInp<'r>
+where
+    's: 'r,
+{
+    let mut req = BorrowingDataObjInp::new(path, OprType::No, open_flags, 0);
+
+    if let Some(resc) = resc {
+        req.cond_input.add_kw(CondInputKw::DestRescNameKw, resc);
+    };
+
+    req.data_size = -1;
+
+    req
+}
+
+impl<T, C> Connection<T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    pub fn open_request(&mut self, path: PathBuf) -> OpenRequest<T, C> {
+        OpenRequest::new(self, path)
+    }
+
+    pub fn open_inner(
+        &mut self,
+        path: PathBuf,
+        flags: i32,
+    ) -> Result<DataObjectHandle, IrodsError> {
+        send_borrowing_msg_and_header(self.connector, msg, msg_type, int_info, msg_buf, header_buf)
+    }
+}
+
+pub struct OpenRequest<'conn, T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    conn: &'conn mut Connection<T, C>,
+    path: PathBuf,
+    flags: i32,
+}
+
+impl<'conn, T, C> OpenRequest<'conn, T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    pub fn new(conn: &'conn mut Connection<T, C>, path: PathBuf) -> Self {
+        Self {
+            conn,
+            path,
+            flags: 0,
+        }
+    }
+
+    pub fn set_flag(mut self, flag: OpenFlag) -> Self {
+        self.flags |= flag as i32;
+        self
+    }
+
+    pub fn unset_flag(mut self, flag: OpenFlag) -> Self {
+        self.flags &= !(flag as i32);
+        self
+    }
+
+    pub fn execute(self) -> Result<DataObjectHandle, IrodsError> {
+        self.conn.open_inner(self.path, self.flags)
+    }
 }

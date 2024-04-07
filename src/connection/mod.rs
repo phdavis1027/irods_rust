@@ -54,12 +54,10 @@ where
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
-    connector: C,
+    pub(crate) connector: C,
     account: Account,
-    header_buf: Vec<u8>,
-    msg_buf: Vec<u8>,
-    unencoded_buf: Vec<u8>,
-    encoded_buf: Vec<u8>,
+    pub header_buf: Vec<u8>,
+    pub msg_buf: Vec<u8>,
     // FIXME: Make this a statically sized array
     signature: Vec<u8>,
     phantom_protocol: PhantomData<T>,

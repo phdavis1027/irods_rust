@@ -7,7 +7,7 @@ use crate::{
         xml::{BorrowingXMLSerializable, BorrowingXMLSerializableChild},
         BorrowingSerializable,
     },
-    fs::{CreateMode, OpenFlags, OprType},
+    fs::{CreateMode, OpenFlag, OprType},
     tag, tag_fmt,
 };
 
@@ -27,11 +27,11 @@ pub struct BorrowingDataObjInp<'s> {
 }
 
 impl<'s> BorrowingDataObjInp<'s> {
-    pub(crate) fn new(path: &'s str, opr_type: OprType, open_flags: i32) -> Self {
+    pub(crate) fn new(path: &'s str, opr_type: OprType, open_flags: i32, create_mode: i32) -> Self {
         Self {
             path,
             opr_type,
-            create_mode: 0,
+            create_mode,
             open_flags,
             offset: 0,
             data_size: 0,
@@ -39,22 +39,6 @@ impl<'s> BorrowingDataObjInp<'s> {
             spec_coll: None,
             cond_input: BorrowingCondInput::new(),
         }
-    }
-
-    pub fn set_create_mode(mut self, create_mode: CreateMode) {
-        self.create_mode |= create_mode as i32;
-    }
-
-    pub fn unset_create_mode(mut self, create_mode: CreateMode) {
-        self.create_mode &= !(create_mode as i32);
-    }
-
-    pub fn set_open_flags(mut self, open_flags: OpenFlags) {
-        self.open_flags |= open_flags as i32;
-    }
-
-    pub fn unset_open_flags(mut self, open_flags: OpenFlags) {
-        self.open_flags &= !(open_flags as i32);
     }
 }
 
@@ -99,7 +83,7 @@ mod test {
     #[test]
     fn test_borrowing_data_obj_inp() {
         let data_obj_inp =
-            BorrowingDataObjInp::new("path/to/data", OprType::Put, OpenFlags::ReadOnly as i32);
+            BorrowingDataObjInp::new("path/to/data", OprType::Put, OpenFlag::ReadOnly as i32);
 
         let mut sink = Vec::new();
         data_obj_inp.borrowing_xml_serialize(&mut sink).unwrap();
