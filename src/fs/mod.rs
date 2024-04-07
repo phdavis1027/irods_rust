@@ -56,6 +56,7 @@ pub enum OpenFlag {
 }
 
 #[cfg_attr(test, derive(Debug))]
+#[derive(Clone, Copy)]
 pub enum OprType {
     No = 0,
     Done = 9999,
@@ -83,6 +84,14 @@ pub enum OprType {
     RenameUnknownType = 22,
     RemoteZone = 24,
     Unreg = 26,
+}
+
+#[cfg_attr(test, derive(Debug))]
+#[derive(Clone, Copy)]
+pub enum Whence {
+    SeekSet = 0,
+    SeekCur = 1,
+    SeekEnd = 2,
 }
 
 pub type DataObjectHandle = i32;
@@ -121,18 +130,20 @@ where
     ) -> Result<(), IrodsError> {
         use cached::Cached;
 
-        if let None = self
+        let handle_or_none = self
             .handle_cache
-            .cache_get(&(path.clone(), flags, resc.clone()))
-        {
-            return Err(IrodsError::Other("No handle to close".into()));
+            .cache_get(&(path.clone(), flags, resc.clone()));
+
+        match handle_or_none {
+            Some(handle) => {
+                self.close_inner(path.as_path(), flags, resc.as_deref())?;
+                self.handle_cache.cache_remove(&(path, flags, resc));
+                Ok(())
+            }
+            None => {
+                return Err(IrodsError::Other("No handle to close".into()));
+            }
         }
-
-        self.handle_cache
-            .cache_remove(&(path.clone(), flags, resc.clone()));
-
-        self.close(path.to_str().unwrap(), flags, resc.as_deref())?;
-        Ok(())
     }
 
     fn close<'s>(

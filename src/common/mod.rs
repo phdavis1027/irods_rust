@@ -81,5 +81,6 @@ impl TryFrom<&str> for CsNegResult {
 
 pub mod apn {
     pub const AUTHENTICATION_APN: i32 = 110000;
-    pub const DATA_OBJ_OPEN_APN: i32 = 603;
+    pub const DATA_OBJ_OPEN_APN: i32 = 602;
+    pub const DATA_OBJ_CLOSE_APN: i32 = 603;
 }
