@@ -112,6 +112,55 @@ where
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
+    #[cfg(feature = "cached")]
+    pub fn close_cached(
+        &mut self,
+        path: PathBuf,
+        flags: i32,
+        resc: Option<String>,
+    ) -> Result<(), IrodsError> {
+        use cached::Cached;
+
+        if let None = self
+            .handle_cache
+            .cache_get(&(path.clone(), flags, resc.clone()))
+        {
+            return Err(IrodsError::Other("No handle to close".into()));
+        }
+
+        self.handle_cache
+            .cache_remove(&(path.clone(), flags, resc.clone()));
+
+        self.close(path.to_str().unwrap(), flags, resc.as_deref())?;
+        Ok(())
+    }
+
+    fn close<'s>(
+        &mut self,
+        path: &'s str,
+        flags: i32,
+        resc: Option<&'s str>,
+    ) -> Result<(), IrodsError> {
+        Ok(())
+    }
+
+    pub fn close_inner<'s>(
+        &mut self,
+        path: &'s Path,
+        flags: i32,
+        resc: Option<&'s str>,
+    ) -> Result<(), IrodsError> {
+        #[cfg(feature = "cached")]
+        {
+            self.close_cached(PathBuf::from(path), flags, resc.map(String::from))
+        }
+
+        #[cfg(not(feature = "cached"))]
+        {
+            self.close(path.to_str().unwrap(), flags, resc)
+        }
+    }
+
     pub fn open_request<'s, 'conn>(
         &'conn mut self,
         path: &'s Path,
@@ -148,7 +197,10 @@ where
     ) -> Result<DataObjectHandle, IrodsError> {
         use cached::Cached;
 
-        if let Some(handle) = self.handle_cache.cache_get(&path) {
+        if let Some(handle) = self
+            .handle_cache
+            .cache_get(&(path.clone(), flags, resc.clone()))
+        {
             return Ok(*handle);
         }
 
@@ -156,7 +208,7 @@ where
         // NOTE: `Option::as_deref` is used to convert `Option<String>` to `Option<&str>
         // This, to me, is a bit of black magic.
         let handle = self.open(path.to_str().unwrap(), flags, resc.as_deref())?;
-        self.handle_cache.cache_set(path, handle);
+        self.handle_cache.cache_set((path, flags, resc), handle);
 
         Ok(handle)
     }
@@ -176,6 +228,53 @@ where
         {
             self.open(path.to_str().unwrap(), flags, resc)
         }
+    }
+}
+
+pub struct CloseRequest<'s, 'conn, T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    conn: &'conn mut Connection<T, C>,
+    path: &'s Path,
+    resc: Option<&'s str>,
+    flags: i32,
+}
+
+impl<'s, 'conn, T, C> CloseRequest<'s, 'conn, T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    pub fn new(conn: &'conn mut Connection<T, C>, path: &'s Path) -> Self {
+        Self {
+            conn,
+            path,
+            flags: 0,
+            resc: None,
+        }
+    }
+
+    pub fn set_flag(mut self, flag: OpenFlag) -> Self {
+        self.flags |= flag as i32;
+        self
+    }
+
+    pub fn unset_flag(mut self, flag: OpenFlag) -> Self {
+        self.flags &= !(flag as i32);
+        self
+    }
+
+    pub fn resc(mut self, resc: &'s str) -> Self {
+        self.resc = Some(resc);
+        self
+    }
+
+    pub fn execute(self) -> Result<(), IrodsError> {
+        self.conn.close_inner(self.path, self.flags, self.resc)
     }
 }
 

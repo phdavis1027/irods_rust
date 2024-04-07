@@ -64,7 +64,11 @@ where
     // FIXME: Make this a statically sized array
     signature: Vec<u8>,
     phantom_protocol: PhantomData<T>,
-    pub(crate) handle_cache: cached::stores::SizedCache<PathBuf, DataObjectHandle>,
+    // I am fairly sure that these three things
+    // uniquely identify an open l1 handle.
+    // See: https://github.com/irods/irods/blob/06bbf6d544fd0448fc687b4e46808249b662443f/server/drivers/src/fileDriver.cpp#L56
+    pub(crate) handle_cache:
+        cached::stores::SizedCache<(PathBuf, i32, Option<String>), DataObjectHandle>,
 }
 
 #[cfg(not(feature = "cached"))]
