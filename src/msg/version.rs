@@ -9,7 +9,6 @@ use crate::bosd::{BorrowingDeserializable, BorrowingDeserializer, BorrowingSeria
 
 use crate::bosd::xml::BorrowingXMLDeserializable;
 
-#[cfg_attr(feature = "arbitrary", Arbitrary)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct BorrowingVersion<'s> {
     pub status: i32,

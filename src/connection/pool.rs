@@ -60,24 +60,19 @@ where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,
     T: Send + Sync + 'static,
-    C: Connect<T> + Send + Sync + Clone + 'static,
+    C: Connect<T> + Send + Sync + 'static,
     C::Transport: Send + Sync + 'static,
-    A: Authenticate<T, C::Transport> + Clone + Send + Sync + 'static,
+    A: Authenticate<T, C::Transport> + Send + Sync + 'static,
 {
     type Type = deadpool_sync::SyncWrapper<Connection<T, C::Transport>>;
     type Error = IrodsError;
 
     async fn create(&self) -> Result<Self::Type, Self::Error> {
-        let account = self.account.clone(); // gotta clone the account anyway to give it to the connection
-        let connector = self.connector.clone(); // make sure connector is cheaply cloneable
-        let authenticator = self.authenticator.clone(); // make sure connector is cheaply cloneable
+        let mut conn = self.connector.connect(self.account.clone())?;
+        tokio::task::yield_now().await;
+        self.authenticator.authenticate(&mut conn)?;
 
-        SyncWrapper::new(deadpool_runtime::Runtime::Tokio1, move || {
-            let mut conn = connector.connect(account)?;
-            authenticator.authenticate(&mut conn)?;
-            Ok(conn)
-        })
-        .await
+        SyncWrapper::new(deadpool_runtime::Runtime::Tokio1, move || Ok(conn)).await
     }
 
     async fn recycle(

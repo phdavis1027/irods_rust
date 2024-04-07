@@ -12,6 +12,7 @@ use crate::{
         OwningDeserializble, OwningDeserializer, OwningSerializable, OwningSerializer,
     },
     connection::ssl::{SslConfig, SslConnector},
+    fs::DataObjectHandle,
     msg::{
         bin_bytes_buf::BorrowingStrBuf,
         header::{BorrowingHandshakeHeader, MsgType, OwningStandardHeader},
@@ -29,6 +30,7 @@ use std::{
     fmt::Debug,
     io::{self, Cursor, Write},
     marker::PhantomData,
+    path::PathBuf,
     time::Duration,
 };
 
@@ -48,6 +50,24 @@ pub struct Account {
     proxy_zone: String,
 }
 
+#[cfg(feature = "cached")]
+pub struct Connection<T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    pub(crate) connector: C,
+    account: Account,
+    pub(crate) header_buf: Vec<u8>,
+    pub(crate) msg_buf: Vec<u8>,
+    // FIXME: Make this a statically sized array
+    signature: Vec<u8>,
+    phantom_protocol: PhantomData<T>,
+    pub(crate) handle_cache: cached::stores::SizedCache<PathBuf, DataObjectHandle>,
+}
+
+#[cfg(not(feature = "cached"))]
 pub struct Connection<T, C>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
@@ -254,6 +274,7 @@ where
     Ok((header, msg))
 }
 
+#[cfg(not(feature = "cached"))]
 impl<T, C> Connection<T, C>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
@@ -265,18 +286,39 @@ where
         account: Account,
         header_buf: Vec<u8>,
         msg_buf: Vec<u8>,
-        unencoded_buf: Vec<u8>,
-        encoded_buf: Vec<u8>,
     ) -> Self {
         Connection {
             connector,
             account,
             header_buf,
             msg_buf,
-            unencoded_buf,
-            encoded_buf,
             signature: Vec::with_capacity(16),
             phantom_protocol: PhantomData,
+        }
+    }
+}
+
+#[cfg(feature = "cached")]
+impl<T, C> Connection<T, C>
+where
+    T: BorrowingSerializer + BorrowingDeserializer,
+    T: OwningSerializer + OwningDeserializer,
+    C: io::Read + io::Write,
+{
+    pub(crate) fn new(
+        connector: C,
+        account: Account,
+        header_buf: Vec<u8>,
+        msg_buf: Vec<u8>,
+    ) -> Self {
+        Connection {
+            connector,
+            account,
+            header_buf,
+            msg_buf,
+            signature: Vec::with_capacity(16),
+            phantom_protocol: PhantomData,
+            handle_cache: cached::stores::SizedCache::with_size(16),
         }
     }
 }

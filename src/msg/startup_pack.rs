@@ -13,7 +13,6 @@ use quick_xml::{
     Writer,
 };
 
-#[cfg_attr(feature = "arbitrary", Arbitrary)]
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
 pub struct BorrowingStartupPack<'s> {
     pub irods_prot: IrodsProt,

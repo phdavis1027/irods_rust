@@ -61,7 +61,7 @@ where
     fn authenticate(&self, conn: &mut Connection<T, C>) -> Result<Self::Output, IrodsError>;
 }
 
-struct NativeAuthenticator {
+pub struct NativeAuthenticator {
     a_ttl: u32,
     password: String,
     unencoded_buf: Mutex<Vec<u8>>,

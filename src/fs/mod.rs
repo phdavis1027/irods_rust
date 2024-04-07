@@ -24,13 +24,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rods_prot_msg::{error::errors::IrodsError, types::DataObjInpPI};
+use rods_prot_msg::error::errors::IrodsError;
 
 use crate::{
     bosd::{BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer},
-    common::cond_input_kw::CondInputKw,
-    connection::{send_borrowing_msg_and_header, Connection},
-    msg::data_obj_inp::BorrowingDataObjInp,
+    common::{self, cond_input_kw::CondInputKw},
+    connection::{read_standard_header, send_borrowing_msg_and_header, Connection},
+    msg::{data_obj_inp::BorrowingDataObjInp, header::MsgType},
 };
 
 #[cfg_attr(test, derive(Debug))]
@@ -112,41 +112,97 @@ where
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
-    pub fn open_request(&mut self, path: PathBuf) -> OpenRequest<T, C> {
+    pub fn open_request<'s, 'conn>(
+        &'conn mut self,
+        path: &'s Path,
+    ) -> OpenRequest<'s, 'conn, T, C> {
         OpenRequest::new(self, path)
     }
 
-    pub fn open_inner(
+    fn open<'s>(
+        &mut self,
+        path: &'s str,
+        flags: i32,
+        resc: Option<&'s str>,
+    ) -> Result<DataObjectHandle, IrodsError> {
+        let req = create_open_inp(path, resc, flags);
+
+        send_borrowing_msg_and_header::<T, _, _>(
+            &mut self.connector,
+            req,
+            MsgType::RodsApiReq,
+            common::apn::DATA_OBJ_OPEN_APN,
+            &mut self.header_buf,
+            &mut self.msg_buf,
+        )?;
+
+        Ok(read_standard_header::<_, T>(&mut self.header_buf, &mut self.connector)?.int_info)
+    }
+
+    #[cfg(feature = "cached")]
+    pub fn open_cached(
         &mut self,
         path: PathBuf,
         flags: i32,
+        resc: Option<String>,
     ) -> Result<DataObjectHandle, IrodsError> {
-        send_borrowing_msg_and_header(self.connector, msg, msg_type, int_info, msg_buf, header_buf)
+        use cached::Cached;
+
+        if let Some(handle) = self.handle_cache.cache_get(&path) {
+            return Ok(*handle);
+        }
+
+        // FIXME: Handle invalid UTF-8 paths
+        // NOTE: `Option::as_deref` is used to convert `Option<String>` to `Option<&str>
+        // This, to me, is a bit of black magic.
+        let handle = self.open(path.to_str().unwrap(), flags, resc.as_deref())?;
+        self.handle_cache.cache_set(path, handle);
+
+        Ok(handle)
+    }
+
+    pub fn open_inner<'s>(
+        &mut self,
+        path: &'s Path,
+        flags: i32,
+        resc: Option<&'s str>,
+    ) -> Result<DataObjectHandle, IrodsError> {
+        #[cfg(feature = "cached")]
+        {
+            self.open_cached(PathBuf::from(path), flags, resc.map(String::from))
+        }
+
+        #[cfg(not(feature = "cached"))]
+        {
+            self.open(path.to_str().unwrap(), flags, resc)
+        }
     }
 }
 
-pub struct OpenRequest<'conn, T, C>
+pub struct OpenRequest<'s, 'conn, T, C>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
     conn: &'conn mut Connection<T, C>,
-    path: PathBuf,
+    path: &'s Path,
+    resc: Option<&'s str>,
     flags: i32,
 }
 
-impl<'conn, T, C> OpenRequest<'conn, T, C>
+impl<'s, 'conn, T, C> OpenRequest<'s, 'conn, T, C>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
-    pub fn new(conn: &'conn mut Connection<T, C>, path: PathBuf) -> Self {
+    pub fn new(conn: &'conn mut Connection<T, C>, path: &'s Path) -> Self {
         Self {
             conn,
             path,
             flags: 0,
+            resc: None,
         }
     }
 
@@ -160,7 +216,12 @@ where
         self
     }
 
+    pub fn resc(mut self, resc: &'s str) -> Self {
+        self.resc = Some(resc);
+        self
+    }
+
     pub fn execute(self) -> Result<DataObjectHandle, IrodsError> {
-        self.conn.open_inner(self.path, self.flags)
+        self.conn.open_inner(self.path, self.flags, self.resc)
     }
 }

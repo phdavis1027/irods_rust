@@ -24,7 +24,7 @@ static MSG_BUF_START_SIZE: usize = 2048;
 static UNENCODED_BUF_START_SIZE: usize = 8092;
 static ENCODED_BUF_START_SIZE: usize = 8092;
 
-pub trait Connect<T>: Clone
+pub trait Connect<T>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
     T: OwningDeserializer + OwningSerializer,
@@ -36,16 +36,12 @@ where
         acct: Account,
         header_buf: Vec<u8>,
         msg_buf: Vec<u8>,
-        unencoded_buf: Vec<u8>,
-        encoded_buf: Vec<u8>,
     ) -> Result<Connection<T, Self::Transport>, IrodsError>;
 
     fn connect(&self, acct: Account) -> Result<Connection<T, Self::Transport>, IrodsError> {
         let mut header_buf = vec![0; HEADER_BUF_START_SIZE];
         let mut msg_buf = vec![0; MSG_BUF_START_SIZE];
-        let mut unencoded_buf = vec![0; UNENCODED_BUF_START_SIZE];
-        let mut encoded_buf = vec![0; ENCODED_BUF_START_SIZE];
 
-        self.start(acct, header_buf, msg_buf, unencoded_buf, encoded_buf)
+        self.start(acct, header_buf, msg_buf)
     }
 }
