@@ -28,9 +28,14 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use crate::{
     bosd::{BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer},
-    common::{self, cond_input_kw::CondInputKw},
-    connection::{read_standard_header, send_borrowing_msg_and_header, Connection},
-    msg::{data_obj_inp::BorrowingDataObjInp, header::MsgType},
+    common::{cond_input_kw::CondInputKw, APN},
+    connection::{
+        read_standard_header, send_borrowing_msg_and_header, send_owning_msg_and_header, Connection,
+    },
+    msg::{
+        data_obj_inp::BorrowingDataObjInp, header::MsgType,
+        opened_data_obj_inp::OwningOpenedDataObjInp,
+    },
 };
 
 #[cfg_attr(test, derive(Debug))]
@@ -121,55 +126,17 @@ where
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
-    #[cfg(feature = "cached")]
-    pub fn close_cached(
-        &mut self,
-        path: PathBuf,
-        flags: i32,
-        resc: Option<String>,
-    ) -> Result<(), IrodsError> {
-        use cached::Cached;
+    pub fn close<'s>(&mut self, fd: DataObjectHandle) -> Result<(), IrodsError> {
+        send_owning_msg_and_header::<T, _, _>(
+            &mut self.connector,
+            OwningOpenedDataObjInp::new(fd, 0, Whence::SeekSet, OprType::No, 0, 0),
+            MsgType::RodsApiReq,
+            APN::DataObjClose as i32,
+            &mut self.msg_buf,
+            &mut self.header_buf,
+        )?;
 
-        let handle_or_none = self
-            .handle_cache
-            .cache_get(&(path.clone(), flags, resc.clone()));
-
-        match handle_or_none {
-            Some(handle) => {
-                self.close_inner(path.as_path(), flags, resc.as_deref())?;
-                self.handle_cache.cache_remove(&(path, flags, resc));
-                Ok(())
-            }
-            None => {
-                return Err(IrodsError::Other("No handle to close".into()));
-            }
-        }
-    }
-
-    fn close<'s>(
-        &mut self,
-        path: &'s str,
-        flags: i32,
-        resc: Option<&'s str>,
-    ) -> Result<(), IrodsError> {
         Ok(())
-    }
-
-    pub fn close_inner<'s>(
-        &mut self,
-        path: &'s Path,
-        flags: i32,
-        resc: Option<&'s str>,
-    ) -> Result<(), IrodsError> {
-        #[cfg(feature = "cached")]
-        {
-            self.close_cached(PathBuf::from(path), flags, resc.map(String::from))
-        }
-
-        #[cfg(not(feature = "cached"))]
-        {
-            self.close(path.to_str().unwrap(), flags, resc)
-        }
     }
 
     pub fn open_request<'s, 'conn>(
@@ -179,7 +146,7 @@ where
         OpenRequest::new(self, path)
     }
 
-    fn open<'s>(
+    fn open_inner<'s>(
         &mut self,
         path: &'s str,
         flags: i32,
@@ -191,101 +158,12 @@ where
             &mut self.connector,
             req,
             MsgType::RodsApiReq,
-            common::apn::DATA_OBJ_OPEN_APN,
+            APN::DataObjOpen as i32,
             &mut self.header_buf,
             &mut self.msg_buf,
         )?;
 
         Ok(read_standard_header::<_, T>(&mut self.header_buf, &mut self.connector)?.int_info)
-    }
-
-    #[cfg(feature = "cached")]
-    pub fn open_cached(
-        &mut self,
-        path: PathBuf,
-        flags: i32,
-        resc: Option<String>,
-    ) -> Result<DataObjectHandle, IrodsError> {
-        use cached::Cached;
-
-        if let Some(handle) = self
-            .handle_cache
-            .cache_get(&(path.clone(), flags, resc.clone()))
-        {
-            return Ok(*handle);
-        }
-
-        // FIXME: Handle invalid UTF-8 paths
-        // NOTE: `Option::as_deref` is used to convert `Option<String>` to `Option<&str>
-        // This, to me, is a bit of black magic.
-        let handle = self.open(path.to_str().unwrap(), flags, resc.as_deref())?;
-        self.handle_cache.cache_set((path, flags, resc), handle);
-
-        Ok(handle)
-    }
-
-    pub fn open_inner<'s>(
-        &mut self,
-        path: &'s Path,
-        flags: i32,
-        resc: Option<&'s str>,
-    ) -> Result<DataObjectHandle, IrodsError> {
-        #[cfg(feature = "cached")]
-        {
-            self.open_cached(PathBuf::from(path), flags, resc.map(String::from))
-        }
-
-        #[cfg(not(feature = "cached"))]
-        {
-            self.open(path.to_str().unwrap(), flags, resc)
-        }
-    }
-}
-
-pub struct CloseRequest<'s, 'conn, T, C>
-where
-    T: BorrowingSerializer + BorrowingDeserializer,
-    T: OwningSerializer + OwningDeserializer,
-    C: io::Read + io::Write,
-{
-    conn: &'conn mut Connection<T, C>,
-    path: &'s Path,
-    resc: Option<&'s str>,
-    flags: i32,
-}
-
-impl<'s, 'conn, T, C> CloseRequest<'s, 'conn, T, C>
-where
-    T: BorrowingSerializer + BorrowingDeserializer,
-    T: OwningSerializer + OwningDeserializer,
-    C: io::Read + io::Write,
-{
-    pub fn new(conn: &'conn mut Connection<T, C>, path: &'s Path) -> Self {
-        Self {
-            conn,
-            path,
-            flags: 0,
-            resc: None,
-        }
-    }
-
-    pub fn set_flag(mut self, flag: OpenFlag) -> Self {
-        self.flags |= flag as i32;
-        self
-    }
-
-    pub fn unset_flag(mut self, flag: OpenFlag) -> Self {
-        self.flags &= !(flag as i32);
-        self
-    }
-
-    pub fn resc(mut self, resc: &'s str) -> Self {
-        self.resc = Some(resc);
-        self
-    }
-
-    pub fn execute(self) -> Result<(), IrodsError> {
-        self.conn.close_inner(self.path, self.flags, self.resc)
     }
 }
 
@@ -332,6 +210,8 @@ where
     }
 
     pub fn execute(self) -> Result<DataObjectHandle, IrodsError> {
-        self.conn.open_inner(self.path, self.flags, self.resc)
+        //FIXME: Validate UTF-8
+        self.conn
+            .open_inner(self.path.to_str().unwrap(), self.flags, self.resc)
     }
 }

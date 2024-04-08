@@ -12,7 +12,7 @@ use serde::Deserialize;
 use std::borrow::{BorrowMut, Cow};
 
 use crate::bosd::xml::XML;
-use crate::common::apn::{self, AUTHENTICATION_APN};
+use crate::common::{self, APN};
 use crate::connection::{
     read_from_server, read_header_and_borrowing_msg, send_borrowing_msg_and_header,
     send_owning_msg_and_header,
@@ -139,7 +139,7 @@ where
             &mut conn.connector,
             str_buf,
             MsgType::RodsApiReq,
-            apn::AUTHENTICATION_APN,
+            APN::Authentication as i32,
             &mut conn.msg_buf,
             &mut conn.header_buf,
         );
@@ -223,7 +223,7 @@ where
             &mut conn.connector,
             str_buf,
             MsgType::RodsApiReq,
-            apn::AUTHENTICATION_APN,
+            APN::Authentication as i32,
             &mut conn.msg_buf,
             &mut conn.header_buf,
         );
