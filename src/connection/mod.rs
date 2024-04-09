@@ -1,28 +1,30 @@
 #![allow(warnings)]
 
-pub mod authenticate;
-pub mod connect;
-pub mod pool;
-pub mod ssl;
-pub mod tcp;
+// pub mod authenticate;
+// pub mod connect;
+// pub mod pool;
+// pub mod ssl;
+// pub mod tcp;
 
 use crate::{
     bosd::{
         BorrowingDeserializable, BorrowingDeserializer, BorrowingSerializable, BorrowingSerializer,
         OwningDeserializble, OwningDeserializer, OwningSerializable, OwningSerializer,
     },
-    connection::ssl::{SslConfig, SslConnector},
-    fs::DataObjectHandle,
-    msg::{
-        bin_bytes_buf::BorrowingStrBuf,
-        header::{BorrowingHandshakeHeader, MsgType, OwningStandardHeader},
-        version::BorrowingVersion,
-    },
+    msg::header::{MsgType, OwningStandardHeader}, //connection::ssl::{SslConfig, SslConnector},
+                                                  // fs::DataObjectHandle,
+                                                  // msg::{
+                                                  //     bin_bytes_buf::BorrowingStrBuf,
+                                                  //     header::{BorrowingHandshakeHeader, MsgType, OwningStandardHeader},
+                                                  //     version::BorrowingVersion,
+                                                  // },
 };
+
+use futures::{future::FutureExt, TryFutureExt};
 
 use deadpool::managed::Manager;
 
-use self::{authenticate::Authenticate, connect::Connect};
+// use self::{authenticate::Authenticate, connect::Connect};
 use md5::{Digest, Md5};
 use rods_prot_msg::error::errors::IrodsError;
 
@@ -33,11 +35,13 @@ use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::{
     fmt::Debug,
-    io::{self, Cursor, Read, Write},
+    io::{self, Cursor, Read},
     marker::PhantomData,
     path::PathBuf,
     time::Duration,
 };
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const MAX_PASSWORD_LEN: usize = 50;
 
@@ -71,130 +75,81 @@ where
     phantom_protocol: PhantomData<T>,
 }
 
-pub(crate) fn read_from_server<'s, 'r, R>(
+pub(crate) async fn chain_write_all<R>(buf: &[u8], mut connector: R) -> Result<R, IrodsError>
+where
+    R: tokio::io::AsyncWrite + Unpin,
+{
+    connector.write_all(buf).await?;
+    Ok(connector)
+}
+
+pub(crate) async fn chain_read_from_server<'s, 'r, R>(
     len: usize,
     buf: &'s mut Vec<u8>,
-    connector: &'s mut R,
-) -> Result<usize, IrodsError>
+    mut connector: R,
+) -> Result<(&'s mut Vec<u8>, R), IrodsError>
 where
-    R: io::Read + io::Write,
+    R: tokio::io::AsyncRead + Unpin,
     's: 'r,
 {
-    if len > buf.len() {
-        buf.resize(len, 0);
-    }
-
-    connector.read_exact(&mut buf[..len])?;
-    Ok(len)
+    tokio::io::copy(&mut (&mut connector).take(len as u64), buf).await?;
+    Ok((buf, connector))
 }
 
-pub(crate) fn send_owning_msg_and_header<T, S, M>(
-    connector: &mut S,
-    msg: M,
-    msg_type: MsgType,
-    int_info: i32,
-    msg_buf: &mut Vec<u8>,
-    header_buf: &mut Vec<u8>,
-) -> Result<(), IrodsError>
-where
-    T: OwningSerializer,
-    S: io::Write,
-    M: OwningSerializable,
-{
-    let msg_len = T::rods_owning_ser(&msg, msg_buf)?;
-    let header = OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info);
-    let header_len = T::rods_owning_ser(&header, header_buf)?;
-
-    connector.write_all(&(header_len as u32).to_be_bytes())?;
-    connector.write_all(&header_buf[..header_len])?;
-    connector.write_all(&msg_buf[..msg_len])?;
-    Ok(())
-}
-
-pub(crate) fn send_borrowing_msg_and_header<'s, 'r, T, S, M>(
-    connector: &mut S,
-    msg: M,
-    msg_type: MsgType,
-    int_info: i32,
-    msg_buf: &'r mut Vec<u8>,
-    header_buf: &'r mut Vec<u8>,
-) -> Result<(), IrodsError>
-where
-    T: BorrowingSerializer + OwningSerializer,
-    S: io::Write,
-    M: BorrowingSerializable<'s>,
-    's: 'r,
-{
-    let msg_len = T::rods_borrowing_ser(msg, msg_buf)?;
-    let header = OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info);
-    let header_len = T::rods_owning_ser(&header, header_buf)?;
-
-    connector.write_all(&(header_len as u32).to_be_bytes())?;
-    connector.write_all(&header_buf[..header_len])?;
-    connector.write_all(&msg_buf[..msg_len])?;
-    Ok(())
-}
-
-/* std::io::copy does this
-pub(crate) fn read_into<R>(
+pub(crate) async fn read_standard_header<S, T>(
     buf: &mut Vec<u8>,
-    len: usize,
-    connector: &mut R,
-) -> Result<(), IrodsError>
+    connector: S,
+) -> Result<(OwningStandardHeader, &mut Vec<u8>, S), IrodsError>
 where
-    R: io::Read + io::Write,
-{
-    if len > buf.len() {
-        buf.resize(len, 0);
-    }
-
-    connector.read_exact(&mut buf[..len])?;
-    Ok(())
-}
-*/
-
-pub(crate) fn read_standard_header<S, T>(
-    buf: &mut Vec<u8>,
-    connector: &mut S,
-) -> Result<OwningStandardHeader, IrodsError>
-where
-    S: io::Read + io::Write,
+    S: tokio::io::AsyncRead + Unpin,
     T: OwningDeserializer,
 {
-    connector.read_exact(&mut buf[..4])?;
-    let header_len = u32::from_be_bytes(buf[..4].try_into().unwrap()) as usize;
-
-    connector.read_exact(&mut buf[..header_len])?;
-    let header: OwningStandardHeader = T::rods_owning_de(&buf[..header_len])?;
-
-    if header.error_len != 0 {}
-
-    if header.bs_len != 0 {}
-
-    if header.int_info != 0 {
-        return Err(IrodsError::Other("int_info is not 0".to_string()));
-    }
-
-    Ok(header)
+    Ok(chain_read_from_server(4, buf, connector)
+        .and_then(|(b, mut c)| async {
+            let header_len = u32::from_be_bytes(b[..4].try_into().unwrap()) as usize;
+            chain_read_from_server(header_len, b, &mut c).await?;
+            Ok((b, c, header_len))
+        })
+        .and_then(|(b, c, hl)| async move {
+            Ok((T::rods_owning_de::<OwningStandardHeader>(&b[..hl])?, b, c))
+        })
+        .await?)
 }
 
-pub fn send_borrowing_handshake_header<'s, 'r, S, T>(
+pub(crate) async fn send_standard_header<S, T>(
+    header: OwningStandardHeader,
+    buf: &mut Vec<u8>,
     connector: &mut S,
-    header: BorrowingHandshakeHeader<'s>,
-    buf: &'r mut Vec<u8>,
 ) -> Result<(), IrodsError>
 where
-    S: std::io::Write,
-    T: BorrowingSerializer,
-    's: 'r,
+    S: tokio::io::AsyncWrite + Unpin,
+    T: OwningSerializer,
 {
-    let header_len = T::rods_borrowing_ser(header, buf)?;
-    connector.write_all(&(header_len as u32).to_be_bytes())?;
-    connector.write_all(&buf[..header_len])?;
+    T::rods_owning_ser(&header, buf)?;
+    chain_write_all(&buf, connector).await?;
     Ok(())
 }
 
-pub(crate) fn read_borrowing_msg<'s, 'r, S, T, M>(
+pub(crate) async fn read_owning_msg<S, T, M>(
+    len: usize,
+    buf: &mut Vec<u8>,
+    connector: S,
+) -> Result<(M, &mut Vec<u8>, S), IrodsError>
+where
+    S: tokio::io::AsyncRead + Unpin,
+    T: OwningDeserializer,
+    M: OwningDeserializble,
+{
+    Ok(chain_read_from_server(len, buf, connector)
+        .and_then(|(b, c)| async {
+            let msg = T::rods_owning_de(&b[..len])?;
+
+            Ok((msg, b, c))
+        })
+        .await?)
+}
+
+pub(crate) async fn read_borrowing_msg<'s, 'r, S, T, M>(
     len: usize,
     buf: &'s mut Vec<u8>,
     connector: &mut S,
@@ -202,69 +157,142 @@ pub(crate) fn read_borrowing_msg<'s, 'r, S, T, M>(
 where
     M: BorrowingDeserializable<'r>,
     T: BorrowingDeserializer,
-    S: io::Read + io::Write,
+    S: tokio::io::AsyncRead + Unpin,
     's: 'r,
 {
-    read_from_server(len, buf, connector)?;
-    #[cfg(test)]
-    {
-        let recv_strfied_msg = std::str::from_utf8(&buf[..len]).unwrap();
-        dbg!(recv_strfied_msg);
-    }
-    T::rods_borrowing_de(&buf[..len])
+    chain_read_from_server(len, buf, connector)
+        .and_then(|(b, _)| async { T::rods_borrowing_de(&b[..len]) })
+        .await
 }
 
-pub(crate) fn read_header_and_borrowing_msg<'s, 'r, S, T, M>(
-    msg_buf: &'s mut Vec<u8>,
-    header_buf: &'s mut Vec<u8>,
-    connector: &mut S,
-) -> Result<(OwningStandardHeader, M), IrodsError>
-where
-    S: io::Read + io::Write,
-    T: BorrowingDeserializer + OwningDeserializer,
-    M: BorrowingDeserializable<'r>,
-    's: 'r,
-{
-    let header = read_standard_header::<S, T>(header_buf, connector)?;
-
-    let msg = read_borrowing_msg::<S, T, _>(header.msg_len, msg_buf, connector)?;
-    Ok((header, msg))
-}
-
-pub(crate) fn read_owning_msg<S, T, M>(
-    len: usize,
+pub(crate) async fn send_owning_msg<S, T, M>(
+    msg: M,
     buf: &mut Vec<u8>,
     connector: &mut S,
-) -> Result<M, IrodsError>
+) -> Result<(), IrodsError>
 where
-    S: io::Read + io::Write,
-    T: OwningDeserializer,
-    M: OwningDeserializble,
+    S: tokio::io::AsyncWrite + Unpin,
+    T: OwningSerializer,
+    M: OwningSerializable,
 {
-    read_from_server(len, buf, connector)?;
-    #[cfg(test)]
-    {
-        let recv_strfied_msg = std::str::from_utf8(&buf[..len]).unwrap();
-        dbg!(recv_strfied_msg);
-    }
-    T::rods_owning_de(&buf[..len])
+    T::rods_owning_ser(&msg, buf)?;
+    chain_write_all(&buf, connector).await?;
+    Ok(())
 }
 
-pub(crate) fn read_header_and_owning_msg<S, T, M>(
-    msg_buf: &mut Vec<u8>,
-    header_buf: &mut Vec<u8>,
-    connector: &mut S,
-) -> Result<(OwningStandardHeader, M), IrodsError>
+pub(crate) async fn send_borrowing_msg<'r, 's, S, T, M>(
+    msg: M,
+    buf: &'s mut Vec<u8>,
+    connector: &'r mut S,
+) -> Result<(), IrodsError>
 where
-    S: io::Read + io::Write,
+    S: tokio::io::AsyncWrite + Unpin,
+    T: BorrowingSerializer,
+    M: BorrowingSerializable<'s>,
+{
+    T::rods_borrowing_ser(msg, buf)?;
+    chain_write_all(&buf, connector).await?;
+    Ok(())
+}
+
+pub(crate) async fn send_header_then_owning_msg<S, T, M>(
+    msg: &M,
+    msg_type: MsgType,
+    int_info: i32,
+    header_buf: &mut Vec<u8>,
+    msg_buf: &mut Vec<u8>,
+    connector: &mut S,
+) -> Result<(), IrodsError>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+    T: OwningSerializer,
+    M: OwningSerializable,
+{
+    let msg_len = T::rods_owning_ser(msg, msg_buf)?;
+    let header_len = T::rods_owning_ser(
+        &OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info),
+        header_buf,
+    )?;
+
+    chain_write_all(&(header_len as u32).to_be_bytes(), connector)
+        .and_then(|c| chain_write_all(header_buf, c))
+        .and_then(|c| chain_write_all(msg_buf, c))
+        .await?;
+
+    Ok(())
+}
+
+pub(crate) async fn send_header_then_borrowing_msg<'r, 's, S, T, M>(
+    msg: M,
+    msg_type: MsgType,
+    int_info: i32,
+    header_buf: &mut Vec<u8>,
+    msg_buf: &'s mut Vec<u8>,
+    connector: &'r mut S,
+) -> Result<(), IrodsError>
+where
+    S: tokio::io::AsyncWrite + Unpin,
+    T: BorrowingSerializer + OwningSerializer,
+    M: BorrowingSerializable<'s>,
+{
+    let msg_len = T::rods_borrowing_ser(msg, msg_buf)?;
+    let header_len = T::rods_owning_ser(
+        &OwningStandardHeader::new(msg_type, msg_len, 0, 0, int_info),
+        header_buf,
+    )?;
+
+    chain_write_all(&(header_len as u32).to_be_bytes(), connector)
+        .and_then(|c| chain_write_all(header_buf, c))
+        .and_then(|c| chain_write_all(msg_buf, c))
+        .await?;
+
+    Ok(())
+}
+
+pub(crate) async fn read_header_then_owning_msg<'buf, S, T, M>(
+    header_buf: &'buf mut Vec<u8>,
+    msg_buf: &'buf mut Vec<u8>,
+    bytes_buf: &'buf mut Vec<u8>,
+    error_buf: &'buf mut Vec<u8>,
+    mut connector: S,
+) -> Result<
+    (
+        OwningStandardHeader,
+        M,
+        &'buf mut Vec<u8>,
+        &'buf mut Vec<u8>,
+        &'buf mut Vec<u8>,
+        &'buf mut Vec<u8>,
+        S,
+    ),
+    IrodsError,
+>
+where
+    S: tokio::io::AsyncRead + Unpin,
     T: OwningDeserializer,
     M: OwningDeserializble,
 {
-    let header = read_standard_header::<S, T>(header_buf, connector)?;
+    let (msg, header) = read_standard_header::<&mut S, T>(header_buf, &mut connector)
+        .and_then(|(header, hb, c)| async {
+            let msg_len = header.msg_len as usize;
+            let bs_len = header.bs_len as usize;
+            let error_len = header.error_len as usize;
 
-    let msg = read_owning_msg::<S, T, _>(header.msg_len, msg_buf, connector)?;
+            let (msg, mb, c) = read_owning_msg::<&mut S, T, M>(msg_len, msg_buf, c)
+                .and_then(|(msg, mb, mut c)| async {
+                    chain_read_from_server(bs_len, bytes_buf, &mut c)
+                        .and_then(|(_, c)| chain_read_from_server(error_len, error_buf, c))
+                        .await?;
+                    Ok((msg, mb, c))
+                })
+                .await?;
+            Ok((msg, header))
+        })
+        .await?;
 
-    Ok((header, msg))
+    Ok((
+        header, msg, msg_buf, bytes_buf, error_buf, header_buf, connector,
+    ))
 }
 
 impl<T, C> Connection<T, C>
