@@ -95,6 +95,8 @@ where
         acct: super::Account,
         mut header_buf: Vec<u8>,
         mut msg_buf: Vec<u8>,
+        mut bytes_buf: Vec<u8>,
+        mut error_buf: Vec<u8>,
     ) -> Result<super::Connection<T, Self::Transport>, IrodsError> {
         let mut stream = TcpStream::connect(self.inner.addr)?;
 
@@ -169,6 +171,8 @@ where
         );
         send_borrowing_handshake_header::<_, T>(&mut stream, shared_secret_header, &mut msg_buf)?;
 
-        Ok(Connection::new(stream, acct, header_buf, msg_buf))
+        Ok(Connection::new(
+            stream, acct, header_buf, msg_buf, error_buf, bytes_buf,
+        ))
     }
 }

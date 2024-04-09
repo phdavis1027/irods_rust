@@ -36,12 +36,16 @@ where
         acct: Account,
         header_buf: Vec<u8>,
         msg_buf: Vec<u8>,
+        bytes_buf: Vec<u8>,
+        error_buf: Vec<u8>,
     ) -> Result<Connection<T, Self::Transport>, IrodsError>;
 
     fn connect(&self, acct: Account) -> Result<Connection<T, Self::Transport>, IrodsError> {
         let mut header_buf = vec![0; HEADER_BUF_START_SIZE];
         let mut msg_buf = vec![0; MSG_BUF_START_SIZE];
+        let mut bytes_buf = vec![0; 1024];
+        let mut error_buf = vec![0; 1024];
 
-        self.start(acct, header_buf, msg_buf)
+        self.start(acct, header_buf, msg_buf, bytes_buf, error_buf)
     }
 }

@@ -26,52 +26,34 @@ use self::{authenticate::Authenticate, connect::Connect};
 use md5::{Digest, Md5};
 use rods_prot_msg::error::errors::IrodsError;
 
-use std::{
-    fmt::Debug,
-    io::{self, Cursor, Write},
-    marker::PhantomData,
-    path::PathBuf,
-    time::Duration,
-};
-
 use base64::engine::GeneralPurposeConfig;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::{encoded_len, engine::GeneralPurpose};
 use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+use std::{
+    fmt::Debug,
+    io::{self, Cursor, Read, Write},
+    marker::PhantomData,
+    path::PathBuf,
+    time::Duration,
+};
 
 const MAX_PASSWORD_LEN: usize = 50;
 
 #[derive(Clone)]
 pub struct Account {
-    client_user: String,
-    client_zone: String,
-    proxy_user: String,
-    proxy_zone: String,
+    pub client_user: String,
+    pub client_zone: String,
+    pub proxy_user: String,
+    pub proxy_zone: String,
 }
 
-#[cfg(feature = "cached")]
-pub struct Connection<T, C>
-where
-    T: BorrowingSerializer + BorrowingDeserializer,
-    T: OwningSerializer + OwningDeserializer,
-    C: io::Read + io::Write,
-{
-    pub(crate) connector: C,
-    account: Account,
-    pub(crate) header_buf: Vec<u8>,
-    pub(crate) msg_buf: Vec<u8>,
-    // FIXME: Make this a statically sized array
-    signature: Vec<u8>,
-    phantom_protocol: PhantomData<T>,
-    // I am fairly sure that these three things
-    // uniquely identify an open l1 handle.
-    // See: https://github.com/irods/irods/blob/06bbf6d544fd0448fc687b4e46808249b662443f/server/drivers/src/fileDriver.cpp#L56
-    pub(crate) handle_cache:
-        cached::stores::SizedCache<(PathBuf, i32, Option<String>), DataObjectHandle>,
-}
-
-#[cfg(not(feature = "cached"))]
+// It might seem a bit inflexible to force all bites to come in  through
+// the bytes_buf, but it is actually MORE flexible since it doesn't force
+// an allocation of a new buffer if one is not needed. Moreover, if the user
+// wants to take ownership (e.g., if they want a String out of the bytes) buf,
+// they can just use `std::mem::take` to take ownership of the buffer.
 pub struct Connection<T, C>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
@@ -82,6 +64,8 @@ where
     account: Account,
     pub header_buf: Vec<u8>,
     pub msg_buf: Vec<u8>,
+    pub bytes_buf: Vec<u8>,
+    pub error_buf: Vec<u8>,
     // FIXME: Make this a statically sized array
     signature: Vec<u8>,
     phantom_protocol: PhantomData<T>,
@@ -91,16 +75,15 @@ pub(crate) fn read_from_server<'s, 'r, R>(
     len: usize,
     buf: &'s mut Vec<u8>,
     connector: &'s mut R,
-) -> Result<&'r [u8], IrodsError>
+) -> Result<usize, IrodsError>
 where
     R: io::Read + io::Write,
     's: 'r,
 {
-    if len > buf.len() {
-        buf.resize(len, 0);
-    }
-    connector.read_exact(&mut buf[..len])?;
-    Ok(&buf[..len])
+    connector
+        .take(len as u64)
+        .read_to_end(Cursor::new(buf))
+        .map_err(IrodsError::from)
 }
 
 pub(crate) fn send_owning_msg_and_header<T, S, M>(
@@ -181,6 +164,10 @@ where
 
     connector.read_exact(&mut buf[..header_len])?;
     let header: OwningStandardHeader = T::rods_owning_de(&buf[..header_len])?;
+
+    if header.error_len != 0 {}
+
+    if header.bs_len != 0 {}
 
     if header.int_info != 0 {
         return Err(IrodsError::Other("int_info is not 0".to_string()));
@@ -278,7 +265,6 @@ where
     Ok((header, msg))
 }
 
-#[cfg(not(feature = "cached"))]
 impl<T, C> Connection<T, C>
 where
     T: BorrowingSerializer + BorrowingDeserializer,
@@ -290,39 +276,18 @@ where
         account: Account,
         header_buf: Vec<u8>,
         msg_buf: Vec<u8>,
+        bytes_buf: Vec<u8>,
+        error_buf: Vec<u8>,
     ) -> Self {
         Connection {
             connector,
             account,
             header_buf,
             msg_buf,
+            bytes_buf,
+            error_buf,
             signature: Vec::with_capacity(16),
             phantom_protocol: PhantomData,
-        }
-    }
-}
-
-#[cfg(feature = "cached")]
-impl<T, C> Connection<T, C>
-where
-    T: BorrowingSerializer + BorrowingDeserializer,
-    T: OwningSerializer + OwningDeserializer,
-    C: io::Read + io::Write,
-{
-    pub(crate) fn new(
-        connector: C,
-        account: Account,
-        header_buf: Vec<u8>,
-        msg_buf: Vec<u8>,
-    ) -> Self {
-        Connection {
-            connector,
-            account,
-            header_buf,
-            msg_buf,
-            signature: Vec::with_capacity(16),
-            phantom_protocol: PhantomData,
-            handle_cache: cached::stores::SizedCache::with_size(16),
         }
     }
 }

@@ -82,5 +82,7 @@ impl TryFrom<&str> for CsNegResult {
 pub enum APN {
     Authentication = 110000,
     DataObjOpen = 602,
-    DataObjClose = 603,
+    DataObjClose = 673,
+    DataObjLSeek = 674,
+    DataObjRead = 675,
 }

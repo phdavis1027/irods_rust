@@ -27,13 +27,17 @@ use std::{
 use rods_prot_msg::error::errors::IrodsError;
 
 use crate::{
-    bosd::{BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer},
+    bosd::{
+        BorrowingDeserializer, BorrowingSerializer, IrodsProtocol, OwningDeserializer,
+        OwningSerializer,
+    },
     common::{cond_input_kw::CondInputKw, APN},
     connection::{
-        read_standard_header, send_borrowing_msg_and_header, send_owning_msg_and_header, Connection,
+        read_header_and_owning_msg, read_standard_header, send_borrowing_msg_and_header,
+        send_owning_msg_and_header, Connection,
     },
     msg::{
-        data_obj_inp::BorrowingDataObjInp, header::MsgType,
+        data_obj_inp::BorrowingDataObjInp, file_lseek_out::OwningFileLseekOut, header::MsgType,
         opened_data_obj_inp::OwningOpenedDataObjInp,
     },
 };
@@ -126,7 +130,7 @@ where
     T: OwningSerializer + OwningDeserializer,
     C: io::Read + io::Write,
 {
-    pub fn close<'s>(&mut self, fd: DataObjectHandle) -> Result<(), IrodsError> {
+    pub fn close(&mut self, fd: DataObjectHandle) -> Result<(), IrodsError> {
         send_owning_msg_and_header::<T, _, _>(
             &mut self.connector,
             OwningOpenedDataObjInp::new(fd, 0, Whence::SeekSet, OprType::No, 0, 0),
@@ -136,7 +140,52 @@ where
             &mut self.header_buf,
         )?;
 
+        read_standard_header::<_, T>(&mut self.header_buf, &mut self.connector)?;
+
         Ok(())
+    }
+
+    pub fn seek(
+        &mut self,
+        fd: DataObjectHandle,
+        seek: Whence,
+        offset: usize,
+    ) -> Result<(), IrodsError> {
+        send_owning_msg_and_header::<T, _, _>(
+            &mut self.connector,
+            OwningOpenedDataObjInp::new(fd, 0, seek, OprType::No, offset, 0),
+            MsgType::RodsApiReq,
+            APN::DataObjLSeek as i32,
+            &mut self.header_buf,
+            &mut self.msg_buf,
+        )?;
+
+        let (_, lseek_out): (_, OwningFileLseekOut) = read_header_and_owning_msg::<_, T, _>(
+            &mut self.msg_buf,
+            &mut self.header_buf,
+            &mut self.connector,
+        )?;
+
+        if lseek_out.offset != offset {
+            return Err(IrodsError::Other(
+                "Seek returned incorrect offset".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub fn read(&mut self, fd: DataObjectHandle, len: usize) -> Result<usize, IrodsError> {
+        send_owning_msg_and_header::<T, _, _>(
+            &mut self.connector,
+            OwningOpenedDataObjInp::new(fd, len, Whence::SeekSet, OprType::No, 0, 0),
+            MsgType::RodsApiReq,
+            APN::DataObjRead as i32,
+            &mut self.msg_buf,
+            &mut self.header_buf,
+        )?;
+
+        Ok(0)
     }
 
     pub fn open_request<'s, 'conn>(
@@ -213,5 +262,57 @@ where
         //FIXME: Validate UTF-8
         self.conn
             .open_inner(self.path.to_str().unwrap(), self.flags, self.resc)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+
+    use deadpool::managed::Pool;
+
+    use crate::{
+        bosd::xml::XML,
+        connection::{
+            authenticate::NativeAuthenticator,
+            pool::{self, IrodsManager},
+            ssl::SslConfig,
+            tcp::TcpConnector,
+            Account,
+        },
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_read() {
+        let authenticator = NativeAuthenticator::new(30, "rods".into());
+
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([172, 18, 0, 3]), 1247));
+        let connector = TcpConnector::new(addr);
+
+        let account = Account {
+            client_user: "rods".into(),
+            client_zone: "tempZone".into(),
+            proxy_user: "rods".into(),
+            proxy_zone: "tempZone".into(),
+        };
+
+        let manager: IrodsManager<XML, _, _> =
+            IrodsManager::new(account, authenticator, connector, 30, 5);
+
+        let pool: Pool<IrodsManager<_, _, _>> =
+            Pool::builder(manager).max_size(16).build().unwrap();
+
+        let mut conn = pool.get().await.unwrap();
+
+        conn.interact(|c| {
+            let fd = c
+                .open_request(Path::new("/tempZone/home/rods/test.txt"))
+                .set_flag(OpenFlag::ReadOnly)
+                .execute()
+                .unwrap();
+        })
+        .await;
     }
 }

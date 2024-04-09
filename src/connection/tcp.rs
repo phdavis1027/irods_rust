@@ -37,6 +37,8 @@ where
         acct: Account,
         mut header_buf: Vec<u8>,
         mut msg_buf: Vec<u8>,
+        mut bytes_buf: Vec<u8>,
+        mut error_buf: Vec<u8>,
     ) -> Result<Connection<T, Self::Transport>, IrodsError> {
         let mut stream = TcpStream::connect(self.addr)?;
 
@@ -73,7 +75,7 @@ where
             return Err(IrodsError::Other("Server returned an error".into()));
         }
 
-        let connection = Connection::new(stream, acct, header_buf, msg_buf);
+        let connection = Connection::new(stream, acct, header_buf, msg_buf, bytes_buf, error_buf);
 
         Ok(connection)
     }

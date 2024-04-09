@@ -64,18 +64,11 @@ where
 pub struct NativeAuthenticator {
     a_ttl: u32,
     password: String,
-    unencoded_buf: Mutex<Vec<u8>>,
-    encoded_buf: Mutex<Vec<u8>>,
 }
 
 impl NativeAuthenticator {
     pub fn new(a_ttl: u32, password: String) -> Self {
-        Self {
-            a_ttl,
-            password,
-            unencoded_buf: Mutex::new(Vec::new()),
-            encoded_buf: Mutex::new(Vec::new()),
-        }
+        Self { a_ttl, password }
     }
 }
 
@@ -95,16 +88,13 @@ where
     type Output = Vec<u8>;
 
     fn authenticate(&self, conn: &mut Connection<T, C>) -> Result<Self::Output, IrodsError> {
-        let mut unencoded_buf = self.unencoded_buf.lock().unwrap();
-        let mut encoded_buf = self.encoded_buf.lock().unwrap();
-
         let mut signature = Vec::with_capacity(16);
 
         let b64_engine = Self::create_base64_engine();
 
         // UNSAFE: Connection buffers are always initialized with
         // at least enough space for the payload
-        let mut unencoded_cursor = Cursor::new(&mut *unencoded_buf);
+        let mut unencoded_cursor = Cursor::new(&mut conn.bytes_buf);
 
         write!(
             unencoded_cursor,
@@ -122,17 +112,17 @@ where
         )?;
 
         let unencoded_len = unencoded_cursor.position() as usize;
-        encoded_buf.resize(4 * (unencoded_len / 3) + 1, 0); // Make sure we have enough room
-                                                            // to store the encoded string.
+        conn.error_buf.resize(4 * (unencoded_len / 3) + 1, 0); // Make sure we have enough room
+                                                               // to store the encoded string.
         let payload_len = b64_engine
             .encode_slice(
-                &unencoded_cursor.get_mut()[..unencoded_len], // UNSAFE: The cursor guarantees we have enough space
-                encoded_buf.as_mut_slice(),
+                &conn.bytes_buf[..unencoded_len], // UNSAFE: The cursor guarantees we have enough space
+                conn.error_buf.as_mut_slice(),
             )
             .map_err(|e| IrodsError::Other("FIXME: This sucks.".into()))?;
 
         // UNSAFE: Base64 is always valid UTF-8
-        let encoded_str = unsafe { std::str::from_utf8_unchecked(&encoded_buf[..payload_len]) };
+        let encoded_str = unsafe { std::str::from_utf8_unchecked(&conn.error_buf[..payload_len]) };
         let str_buf = BorrowingStrBuf::new(encoded_str);
 
         send_borrowing_msg_and_header::<T, _, _>(
@@ -154,11 +144,12 @@ where
         // we know the challenge buffer is long enough to hold the decoded value
         // because base64 makes strings lsonger
         let payload_len = b64_engine
-            .decode_slice(challenge.buf.as_bytes(), &mut *unencoded_buf)
+            .decode_slice(challenge.buf.as_bytes(), &mut conn.bytes_buf)
             .map_err(|e| IrodsError::Other(format!("Failed to decode challenge: {:?}", e)))?;
 
-        let challenge_str =
-            unsafe { std::str::from_utf8_unchecked(unencoded_buf.get(..payload_len - 1).unwrap()) };
+        let challenge_str = unsafe {
+            std::str::from_utf8_unchecked(conn.error_buf.as_slice().get(..payload_len - 1).unwrap())
+        };
 
         let request_result = serde_json::from_str::<AuthAgentAuthResponse>(challenge_str)
             .map_err(|e| IrodsError::Other(format!("Failed to parse challenge: {:?}", e)))?
@@ -175,7 +166,7 @@ where
         digest.update(request_result.as_bytes());
 
         // Briefly repurpose the unencoded buf
-        let mut pad_buf = &mut unencoded_buf[..MAX_PASSWORD_LEN];
+        let mut pad_buf = &mut conn.bytes_buf[..MAX_PASSWORD_LEN];
         pad_buf.fill(0);
         // TODO: There simply must be a way to use std::io::copy here
         for (i, c) in self.password.as_bytes().iter().enumerate() {
@@ -183,7 +174,7 @@ where
         }
         digest.update(pad_buf); //BORROWEND: pad_buf
 
-        let mut unencoded_cursor = Cursor::new(&mut *unencoded_buf);
+        let mut unencoded_cursor = Cursor::new(&mut conn.bytes_buf);
         // TODO: Some slice kung fu to make get rid of the allocation inucrred
         // by STANDARD.encode
         write!(
@@ -205,18 +196,18 @@ where
         );
 
         let unencoded_len = unencoded_cursor.position() as usize;
-        encoded_buf.resize(5 * (unencoded_len / 3) + 1, 0); // Make sure we have enough room
+        conn.error_buf.resize(5 * (unencoded_len / 3) + 1, 0); // Make sure we have enough room
         let payload_len = b64_engine
             .encode_slice(
                 &unencoded_cursor.get_mut()[..unencoded_len],
-                encoded_buf.as_mut_slice(),
+                conn.error_buf.as_mut_slice(),
             )
             .map_err(|e| {
                 println!("Error: {:?}", e);
                 IrodsError::Other("FIXME: This sucks".into())
             })?;
 
-        let encoded_str = unsafe { std::str::from_utf8_unchecked(&encoded_buf[..payload_len]) };
+        let encoded_str = unsafe { std::str::from_utf8_unchecked(&conn.error_buf[..payload_len]) };
         let str_buf = BorrowingStrBuf::new(encoded_str);
 
         send_borrowing_msg_and_header::<XML, _, _>(
