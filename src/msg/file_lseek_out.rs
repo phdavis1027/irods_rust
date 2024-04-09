@@ -44,7 +44,7 @@ impl OwningXMLDeserializable for OwningFileLseekOut {
                 (State::OffsetInner, quick_xml::events::Event::Text(e)) => {
                     offset = Some(e.unescape()?.parse()?);
                     return Ok(Self {
-                        offset: offset.unwrap() as i64,
+                        offset: offset.unwrap(),
                     });
                 }
                 (_, quick_xml::events::Event::Eof) => {

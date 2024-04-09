@@ -33,7 +33,7 @@ use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use std::{
     fmt::Debug,
-    io::{self, Cursor, Read, Write},
+    io::{self, Cursor, Write},
     marker::PhantomData,
     path::PathBuf,
     time::Duration,
@@ -75,15 +75,17 @@ pub(crate) fn read_from_server<'s, 'r, R>(
     len: usize,
     buf: &'s mut Vec<u8>,
     connector: &'s mut R,
-) -> Result<usize, IrodsError>
+) -> Result<&'r [u8], IrodsError>
 where
     R: io::Read + io::Write,
     's: 'r,
 {
-    connector
-        .take(len as u64)
-        .read_to_end(Cursor::new(buf))
-        .map_err(IrodsError::from)
+    if len > buf.len() {
+        buf.resize(len, 0);
+    }
+
+    connector.read_exact(&mut buf[..len])?;
+    Ok(&buf[..len])
 }
 
 pub(crate) fn send_owning_msg_and_header<T, S, M>(
