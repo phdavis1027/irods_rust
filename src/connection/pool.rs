@@ -64,16 +64,10 @@ where
     C::Transport: Send + Sync + 'static,
     A: Authenticate<T, C::Transport> + Send + Sync + 'static,
 {
-    type Type = deadpool_sync::SyncWrapper<Connection<T, C::Transport>>;
+    type Type = Connection<T, C::Transport>;
     type Error = IrodsError;
 
-    async fn create(&self) -> Result<Self::Type, Self::Error> {
-        let mut conn = self.connector.connect(self.account.clone())?;
-        tokio::task::yield_now().await;
-        self.authenticator.authenticate(&mut conn)?;
-
-        SyncWrapper::new(deadpool_runtime::Runtime::Tokio1, move || Ok(conn)).await
-    }
+    async fn create(&self) -> Result<Self::Type, Self::Error> {}
 
     async fn recycle(
         &self,

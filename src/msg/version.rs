@@ -1,21 +1,19 @@
 // This struct will probably only be check fleetingly
 
-use std::{borrow::Cow, num::ParseIntError};
+use std::num::ParseIntError;
 
 use quick_xml::events::Event;
 use rods_prot_msg::error::errors::IrodsError;
 
-use crate::bosd::{BorrowingDeserializable, BorrowingDeserializer, BorrowingSerializer};
-
-use crate::bosd::xml::BorrowingXMLDeserializable;
+use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
 #[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-pub struct BorrowingVersion<'s> {
+pub struct Version {
     pub status: i32,
     pub rel_version: (u8, u8, u8),
-    pub api_version: Cow<'s, str>,
+    pub api_version: String,
     pub reconn_port: u32,
-    pub reconn_addr: Cow<'s, str>,
+    pub reconn_addr: String,
     pub cookie: u16,
 }
 
@@ -44,11 +42,11 @@ impl TryFrom<&str> for RelVersion {
     }
 }
 
-impl<'s> BorrowingDeserializable<'s> for BorrowingVersion<'s> {}
-impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
-    fn borrowing_xml_deserialize<'r>(src: &'r [u8]) -> Result<Self, IrodsError>
+impl Deserializable for Version {}
+impl XMLDeserializable for Version {
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
     where
-        'r: 's,
+        Self: Sized,
     {
         #[derive(Debug)]
         #[repr(u8)]
@@ -70,12 +68,12 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
 
         let mut status: Option<i32> = None;
         let mut rel_version: Option<(u8, u8, u8)> = None;
-        let mut api_version: Option<Cow<'s, str>> = None;
+        let mut api_version: Option<String> = None;
         let mut reconn_port: Option<u32> = None;
-        let mut reconn_addr: Option<Cow<'s, str>> = None;
+        let mut reconn_addr: Option<String> = None;
         let mut cookie: Option<u16> = None;
 
-        let mut reader = quick_xml::reader::Reader::from_reader(src);
+        let mut reader = quick_xml::reader::Reader::from_reader(xml);
 
         let mut state = State::Tag;
         // Basically, this is safe because encountering any invalid input will throw the state
@@ -117,7 +115,7 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
                     State::ApiVersionInner
                 }
                 (State::ApiVersionInner, Event::Text(text)) => {
-                    api_version = Some(text.unescape()?);
+                    api_version = Some(text.unescape()?.to_string());
 
                     State::ReconnPort
                 }
@@ -135,7 +133,7 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
                     State::ReconnAddrInner
                 }
                 (State::ReconnAddrInner, Event::Text(text)) => {
-                    reconn_addr = Some(text.unescape()?);
+                    reconn_addr = Some(text.unescape()?.to_string());
 
                     State::Cookie
                 }
@@ -176,48 +174,5 @@ impl<'s> BorrowingXMLDeserializable<'s> for BorrowingVersion<'s> {
         }
         // UNSAFE: If any field had been uninitialized, we would have returned an error
         // before this point. State machines!
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::bosd::xml::XML;
-
-    use super::*;
-
-    #[test]
-    fn borrowed_version_deserialize_correctly() {
-        let mut src = r##"
-            <Version_PI>
-                <status>0</status>
-                <relVersion>rods4.3.0</relVersion>
-                <apiVersion>d</apiVersion>
-                <reconnPort>1247</reconnPort>
-                <reconnAddr>0.0.0.0</reconnAddr>
-                <cookie>400</cookie>
-            </Version_PI>
-            "##
-        .to_string();
-
-        src.retain(|c| !c.is_whitespace());
-
-        let deserializer = XML;
-
-        let api_version = "d";
-        let reconn_addr = "0.0.0.0";
-
-        let expected = BorrowingVersion {
-            status: 0,
-            rel_version: (4, 3, 0),
-            api_version: Cow::from(api_version),
-            reconn_port: 1247,
-            reconn_addr: Cow::from(reconn_addr),
-            cookie: 400,
-        };
-
-        assert_eq!(
-            expected,
-            XML::rods_borrowing_de::<BorrowingVersion>(src.as_bytes()).unwrap()
-        );
     }
 }

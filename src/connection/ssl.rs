@@ -1,33 +1,24 @@
 use std::{
     fs::File,
     io::{BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
+    net::SocketAddr,
     path::PathBuf,
     sync::Arc,
 };
 
-use native_tls::{Certificate, TlsConnector, TlsStream};
+use futures::TryFutureExt;
 use rand::{random, RngCore};
 use rods_prot_msg::error::errors::IrodsError;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::TcpStream;
+use tokio_native_tls::{TlsConnector, TlsStream};
 
 use crate::{
-    bosd::{
-        xml::XML, BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer,
-    },
+    bosd::{xml::XML, ProtocolEncoding},
     common::{CsNegPolicy, CsNegResult},
-    connection::{read_header_and_owning_msg, send_owning_msg_and_header},
-    msg::{
-        cs_neg::{OwningClientCsNeg, OwningServerCsNeg},
-        header::BorrowingHandshakeHeader,
-        startup_pack::BorrowingStartupPack,
-        version::BorrowingVersion,
-    },
 };
 
-use super::{
-    connect::Connect, read_header_and_borrowing_msg, send_borrowing_handshake_header,
-    send_borrowing_msg_and_header, Connection,
-};
+use super::{connect::Connect, ResourceBundle, UnauthenticatedConnection};
 
 pub struct SslConnector {
     inner: Arc<SslConnectorInner>,
@@ -85,94 +76,38 @@ impl SslConnector {
 
 impl<T> Connect<T> for SslConnector
 where
-    T: BorrowingSerializer + BorrowingDeserializer,
-    T: OwningDeserializer + OwningSerializer,
+    T: ProtocolEncoding,
 {
     type Transport = TlsStream<TcpStream>;
 
-    fn start(
+    async fn connect(
         &self,
-        acct: super::Account,
-        mut header_buf: Vec<u8>,
-        mut msg_buf: Vec<u8>,
-        mut bytes_buf: Vec<u8>,
-        mut error_buf: Vec<u8>,
-    ) -> Result<super::Connection<T, Self::Transport>, IrodsError> {
-        let mut stream = TcpStream::connect(self.inner.addr)?;
+        account: super::Account,
+    ) -> Result<UnauthenticatedConnection<T, Self::Transport>, IrodsError> {
+        let tcp_resources = ResourceBundle::new(TcpStream::connect(self.inner.addr).await?);
 
-        let startup_pack = BorrowingStartupPack::new(
-            T::as_enum(),
-            0,
-            0,
-            &acct.proxy_user,
-            &acct.proxy_zone,
-            &acct.client_user,
-            &acct.client_zone,
-            (4, 3, 0),
-            "d",
-            "request_server_negotiation;",
-        );
+        let mut conn: UnauthenticatedConnection<T, TcpStream> =
+            UnauthenticatedConnection::new(account.clone(), tcp_resources);
 
-        send_borrowing_msg_and_header::<XML, _, _>(
-            &mut stream,
-            startup_pack,
-            crate::msg::header::MsgType::RodsConnect,
-            0,
-            &mut msg_buf,
-            &mut header_buf,
-        )?;
+        let conn = conn
+            .send_startup_pack(
+                0,
+                0,
+                account.proxy_user.clone(),
+                account.proxy_zone.clone(),
+                account.client_user.clone(),
+                account.client_zone.clone(),
+                (4, 3, 2),
+                "rust;request_server_negotiation;".to_string(),
+            )
+            .and_then(|conn| conn.get_server_cs_neg())
+            .and_then(|(header, cs_neg, conn)| {
+                // TODO: Check the cs_neg
+                conn.send_use_ssl()
+            })
+            .and_then(|conn| conn.get_version())
+            .await?;
 
-        let (_, cs_neg): (_, OwningServerCsNeg) =
-            read_header_and_owning_msg::<_, XML, _>(&mut msg_buf, &mut header_buf, &mut stream)?;
-
-        if cs_neg.status != 1 || cs_neg.result != CsNegPolicy::CS_NEG_REQUIRE {
-            // We can't accept the connection. Send a message saying that
-        }
-
-        let client_cs_neg = OwningClientCsNeg::new(1, CsNegResult::CS_NEG_USE_SSL);
-        send_owning_msg_and_header::<XML, _, _>(
-            &mut stream,
-            client_cs_neg,
-            crate::msg::header::MsgType::RodsCsNeg,
-            0,
-            &mut msg_buf,
-            &mut header_buf,
-        );
-
-        let (_, version): (_, BorrowingVersion) =
-            read_header_and_borrowing_msg::<_, XML, _>(&mut msg_buf, &mut header_buf, &mut stream)?;
-
-        // Tls only zone from here on
-        let connector = TlsConnector::builder()
-            .add_root_certificate(Certificate::from_pem(&std::fs::read(
-                self.inner.config.cert_file.clone(),
-            )?)?)
-            .danger_accept_invalid_certs(true) // FIXME: Bad, only for testing
-            .build()?;
-
-        let mut stream = connector.connect(&self.inner.config.domain, stream)?;
-
-        let ssl_config_header = BorrowingHandshakeHeader::new(
-            &self.inner.config.algorithm,
-            self.inner.config.key_size,
-            self.inner.config.salt_size,
-            self.inner.config.hash_rounds,
-        );
-        send_borrowing_handshake_header::<_, T>(&mut stream, ssl_config_header, &mut msg_buf)?;
-
-        let shared_secret = &mut msg_buf[..self.inner.config.key_size]; // FIXME: Generate a real shared secret
-        rand::thread_rng().fill_bytes(shared_secret);
-
-        let shared_secret_header = BorrowingHandshakeHeader::new(
-            "SHARED_SECRET",
-            usize::from_be_bytes((&shared_secret[..8]).try_into().unwrap()),
-            0,
-            0,
-        );
-        send_borrowing_handshake_header::<_, T>(&mut stream, shared_secret_header, &mut msg_buf)?;
-
-        Ok(Connection::new(
-            stream, acct, header_buf, msg_buf, error_buf, bytes_buf,
-        ))
+        todo!()
     }
 }

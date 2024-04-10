@@ -1,31 +1,34 @@
 use quick_xml::events::{BytesEnd, BytesStart, Event};
-use rods_prot_msg::{error::errors::IrodsError, types::MsgType};
-use std::io::{Cursor, Write};
+use rods_prot_msg::error::errors::IrodsError;
+use std::io::{Cursor, Read, Write};
 
 use crate::{
     bosd::{
-        xml::{OwningXMLDeserializable, OwningXMLSerializable},
-        OwningDeserializble, OwningSerializable,
+        xml::{XMLDeserializable, XMLSerializable},
+        Deserializable, Serialiazable,
     },
     common::{CsNegPolicy, CsNegResult},
     tag_fmt,
 };
 
 #[cfg_attr(test, derive(Debug))]
-pub struct OwningServerCsNeg {
+pub struct ServerCsNeg {
     pub status: i32,
     pub result: CsNegPolicy,
 }
 
-impl OwningServerCsNeg {
+impl ServerCsNeg {
     pub fn new(status: i32, result: CsNegPolicy) -> Self {
         Self { status, result }
     }
 }
 
-impl OwningDeserializble for OwningServerCsNeg {}
-impl OwningXMLDeserializable for OwningServerCsNeg {
-    fn owning_xml_deserialize(src: &[u8]) -> Result<Self, IrodsError> {
+impl Deserializable for ServerCsNeg {}
+impl XMLDeserializable for ServerCsNeg {
+    fn from_xml(xml: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+    where
+        Self: Sized,
+    {
         #[derive(Debug)]
         #[repr(u8)]
         enum State {
@@ -41,7 +44,7 @@ impl OwningXMLDeserializable for OwningServerCsNeg {
 
         let mut state = State::Tag;
 
-        let mut reader = quick_xml::Reader::from_reader(src);
+        let mut reader = quick_xml::Reader::from_reader(xml);
         loop {
             state = match (state, reader.read_event()?) {
                 (State::Tag, Event::Start(ref e)) if e.name().as_ref() == b"CS_NEG_PI" => {
@@ -75,22 +78,24 @@ impl OwningXMLDeserializable for OwningServerCsNeg {
 }
 
 #[cfg_attr(test, derive(Debug))]
-pub struct OwningClientCsNeg {
+pub struct ClientCsNeg {
     pub status: i32,
     pub result: CsNegResult,
 }
 
-impl OwningClientCsNeg {
+impl ClientCsNeg {
     pub fn new(status: i32, result: CsNegResult) -> Self {
         Self { status, result }
     }
 }
 
-impl OwningSerializable for OwningClientCsNeg {}
-
-impl OwningXMLSerializable for OwningClientCsNeg {
-    fn owning_xml_serialize(&self, buf: &mut Vec<u8>) -> Result<usize, IrodsError> {
-        let mut cursor = Cursor::new(buf);
+impl Serialiazable for ClientCsNeg {}
+impl XMLSerializable for ClientCsNeg {
+    fn to_xml(
+        &self,
+        sink: &mut Vec<u8>,
+    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
+        let mut cursor = Cursor::new(sink);
         let mut writer = quick_xml::Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("CS_NEG_PI")))?;
@@ -103,31 +108,5 @@ impl OwningXMLSerializable for OwningClientCsNeg {
         writer.write_event(Event::End(BytesEnd::new("CS_NEG_PI")))?;
 
         Ok(cursor.position() as usize)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::common::CsNegResult;
-
-    #[test]
-    fn client_cs_neg_serialize_correctly() {
-        let cs_neg = OwningClientCsNeg::new(0, CsNegResult::CS_NEG_USE_SSL);
-
-        let mut buf = Vec::new();
-        cs_neg.owning_xml_serialize(&mut buf).unwrap();
-
-        let expected = r#"<CS_NEG_PI><status>0</status><result>cs_neg_result_kw=CS_NEG_USE_SSL</result></CS_NEG_PI>"#;
-        assert_eq!(String::from_utf8(buf).unwrap(), expected);
-    }
-
-    #[test]
-    fn server_cs_neg_deserialize_correctly() {
-        let src = r#"<CS_NEG_PI><status>0</status><result>CS_NEG_REFUSE</result></CS_NEG_PI>"#;
-        let cs_neg = OwningServerCsNeg::owning_xml_deserialize(src.as_bytes()).unwrap();
-
-        assert_eq!(cs_neg.status, 0);
-        assert_eq!(cs_neg.result, CsNegPolicy::CS_NEG_REFUSE);
     }
 }

@@ -35,11 +35,8 @@ where
     fn start(
         &self,
         acct: Account,
-        mut header_buf: Vec<u8>,
-        mut msg_buf: Vec<u8>,
-        mut bytes_buf: Vec<u8>,
-        mut error_buf: Vec<u8>,
     ) -> Result<Connection<T, Self::Transport>, IrodsError> {
+        let resources = Resourc
         let mut stream = TcpStream::connect(self.addr)?;
 
         let startup_pack = BorrowingStartupPack::new(

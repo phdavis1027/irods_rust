@@ -8,8 +8,8 @@ use std::io::{self, Cursor, Write};
 
 use crate::{
     bosd::{
-        xml::{BorrowingXMLSerializable, OwningXMLDeserializable, OwningXMLSerializable},
-        BorrowingSerializable, BorrowingSerializer, OwningDeserializble, OwningSerializable,
+        xml::{XMLDeserializable, XMLSerializable},
+        Deserializable, Serialiazable,
     },
     tag, tag_fmt,
 };
@@ -61,7 +61,7 @@ impl TryFrom<&str> for MsgType {
 }
 
 #[cfg_attr(test, derive(Debug, Eq, PartialEq))]
-pub struct OwningStandardHeader {
+pub struct StandardHeader {
     pub msg_type: MsgType,
     pub msg_len: usize,
     pub bs_len: usize,
@@ -69,7 +69,7 @@ pub struct OwningStandardHeader {
     pub int_info: i32,
 }
 
-impl OwningStandardHeader {
+impl StandardHeader {
     pub fn new(
         msg_type: MsgType,
         msg_len: usize,
@@ -87,9 +87,9 @@ impl OwningStandardHeader {
     }
 }
 
-impl OwningSerializable for OwningStandardHeader {}
-impl OwningXMLSerializable for OwningStandardHeader {
-    fn owning_xml_serialize(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
+impl Serialiazable for StandardHeader {}
+impl XMLSerializable for StandardHeader {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
@@ -108,237 +108,12 @@ impl OwningXMLSerializable for OwningStandardHeader {
     }
 }
 
-impl OwningDeserializble for OwningStandardHeader {}
-impl OwningXMLDeserializable for OwningStandardHeader {
-    fn owning_xml_deserialize(src: &[u8]) -> Result<Self, IrodsError> {
-        #[derive(Debug)]
-        #[repr(u8)]
-        enum State {
-            Tag,
-            MsgType,
-            MsgTypeInner,
-            MsgLen,
-            MsgLenInner,
-            BsLen,
-            BsLenInner,
-            ErrorLen,
-            ErrorLenInner,
-            IntInfo,
-            IntInfoInner,
-        }
-
-        let mut msg_type: Option<MsgType> = None;
-        let mut msg_len: Option<usize> = None;
-        let mut bs_len: Option<usize> = None;
-        let mut error_len: Option<usize> = None;
-        let mut int_info: Option<i32> = None;
-
-        let mut state = State::Tag;
-
-        let mut reader = Reader::from_reader(src);
-
-        loop {
-            state = match (state, reader.read_event()?) {
-                (State::Tag, Event::Start(e)) if e.name().as_ref() == b"MsgHeader_PI" => {
-                    State::MsgType
-                }
-                (State::Tag, Event::Start(e)) => {
-                    return Err(IrodsError::UnexpectedResponse(format!(
-                        "{:?}",
-                        e.name().into_inner()
-                    )))
-                }
-
-                (State::MsgType, Event::Start(e)) if e.name().as_ref() == b"type" => {
-                    State::MsgTypeInner
-                }
-                (State::MsgTypeInner, Event::Text(text)) => {
-                    msg_type = Some(text.unescape()?.as_ref().try_into()?);
-                    State::MsgLen
-                }
-
-                (State::MsgLen, Event::Start(e)) if e.name().as_ref() == b"msgLen" => {
-                    State::MsgLenInner
-                }
-                (State::MsgLenInner, Event::Text(text)) => {
-                    msg_len = Some(text.unescape()?.parse()?);
-
-                    State::ErrorLen
-                }
-
-                (State::ErrorLen, Event::Start(e)) if e.name().as_ref() == b"errorLen" => {
-                    State::ErrorLenInner
-                }
-                (State::ErrorLenInner, Event::Text(text)) => {
-                    error_len = Some(text.unescape()?.parse()?);
-
-                    State::BsLen
-                }
-
-                (State::BsLen, Event::Start(e)) if e.name().as_ref() == b"bsLen" => {
-                    State::BsLenInner
-                }
-                (State::BsLenInner, Event::Text(text)) => {
-                    bs_len = Some(text.unescape()?.parse()?);
-
-                    State::IntInfo
-                }
-
-                (State::IntInfo, Event::Start(e)) if e.name().as_ref() == b"intInfo" => {
-                    State::IntInfoInner
-                }
-                (State::IntInfoInner, Event::Text(text)) => {
-                    int_info = Some(text.unescape()?.parse()?);
-
-                    return Ok(OwningStandardHeader {
-                        msg_type: msg_type.ok_or(IrodsError::Other(
-                            "Failed to parse field msgType of header".into(),
-                        ))?,
-                        msg_len: msg_len.ok_or(IrodsError::Other(
-                            "Failed to parse field msgLen of header".into(),
-                        ))?,
-                        bs_len: bs_len.ok_or(IrodsError::Other(
-                            "Failed to parse field bsLen of header".into(),
-                        ))?,
-                        error_len: error_len.ok_or(IrodsError::Other(
-                            "Failed to parse field errorLen of header".into(),
-                        ))?,
-                        int_info: int_info.ok_or(IrodsError::Other(
-                            "Failed to parse field intInfo of header".into(),
-                        ))?,
-                    });
-                }
-
-                (state, Event::Eof) => {
-                    return Err(rods_prot_msg::error::errors::IrodsError::Other(format!(
-                        "{state:?}"
-                    )));
-                }
-                state => state.0,
-            }
-        }
-    }
-}
-
-#[cfg_attr(test, derive(Debug, Eq, PartialEq))]
-pub struct BorrowingHandshakeHeader<'s> {
-    algo: &'s str,
-    key_size: usize,
-    salt_size: usize,
-    hash_rounds: usize,
-}
-
-impl<'s> BorrowingHandshakeHeader<'s> {
-    pub fn new(algo: &'s str, key_size: usize, salt_size: usize, hash_rounds: usize) -> Self {
-        Self {
-            algo,
-            key_size,
-            salt_size,
-            hash_rounds,
-        }
-    }
-}
-
-impl<'s> BorrowingSerializable<'s> for BorrowingHandshakeHeader<'s> {}
-
-impl<'s> BorrowingXMLSerializable<'s> for BorrowingHandshakeHeader<'s> {
-    fn borrowing_xml_serialize<'r>(self, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
+impl Deserializable for StandardHeader {}
+impl XMLDeserializable for StandardHeader {
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
     where
-        's: 'r,
+        Self: Sized,
     {
-        let mut cursor = Cursor::new(sink);
-        let mut writer = Writer::new(&mut cursor);
-
-        writer.write_event(Event::Start(BytesStart::new("MsgHeader_PI")))?;
-
-        tag!(writer, "type", self.algo);
-        tag_fmt!(writer, "msgLen", "{}", self.key_size);
-        tag_fmt!(writer, "errorLen", "{}", self.salt_size);
-        tag_fmt!(writer, "bsLen", "{}", self.hash_rounds);
-        tag!(writer, "intInfo", "0");
-
-        writer.write_event(Event::End(BytesEnd::new("MsgHeader_PI")))?;
-
-        Ok(cursor.position() as usize)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use crate::bosd::{xml::XML, OwningDeserializer, OwningSerializer};
-
-    use super::*;
-
-    #[test]
-    fn owning_header_serialize_correctly() {
-        let serializer = XML;
-        let header = OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0);
-
-        let mut expected = r##"
-            <MsgHeader_PI>
-                <type>RODS_CONNECT</type>
-                <msgLen>10</msgLen>
-                <errorLen>0</errorLen>
-                <bsLen>0</bsLen>
-                <intInfo>0</intInfo>
-            </MsgHeader_PI>
-        "##
-        .to_string();
-        expected.retain(|c| !c.is_whitespace());
-
-        let mut buffer = Vec::new();
-        let bytes_written = XML::rods_owning_ser(&header, &mut buffer).unwrap();
-
-        let result = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
-
-        assert_eq!(bytes_written, expected.as_bytes().len());
-        assert_eq!(result, expected.as_str());
-    }
-
-    #[test]
-    fn owning_header_deserialize_correctly() {
-        let mut src = r##"
-            <MsgHeader_PI>
-                <type>RODS_CONNECT</type>
-                <msgLen>10</msgLen>
-                <errorLen>0</errorLen>
-                <bsLen>0</bsLen>
-                <intInfo>0</intInfo>
-            </MsgHeader_PI>
-        "##
-        .to_string();
-        src.retain(|c| !c.is_whitespace());
-
-        let expected = OwningStandardHeader::new(MsgType::RodsConnect, 10, 0, 0, 0);
-
-        assert_eq!(
-            expected,
-            XML::rods_owning_de::<OwningStandardHeader>(src.as_bytes()).unwrap()
-        );
-    }
-
-    #[test]
-    fn borrowing_handshake_header_serialize_correctly() {
-        let header = BorrowingHandshakeHeader::new("SHA512", 64, 32, 1000);
-
-        let mut expected = r##"
-            <MsgHeader_PI>
-                <type>SHA512</type>
-                <msgLen>64</msgLen>
-                <errorLen>32</errorLen>
-                <bsLen>1000</bsLen>
-                <intInfo>0</intInfo>
-            </MsgHeader_PI>
-        "##
-        .to_string();
-        expected.retain(|c| !c.is_whitespace());
-
-        let mut buffer = Vec::new();
-        let bytes_written = XML::rods_borrowing_ser(header, &mut buffer).unwrap();
-
-        let result = std::str::from_utf8(&buffer[..bytes_written]).unwrap();
-
-        assert_eq!(bytes_written, expected.as_bytes().len());
-        assert_eq!(result, expected.as_str());
+        unimplemented!()
     }
 }

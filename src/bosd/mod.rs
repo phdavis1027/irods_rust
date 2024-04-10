@@ -6,71 +6,26 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use crate::common::IrodsProt;
 
+use self::xml::{XMLDeserializable, XMLSerializable};
+
 /// Note to developers:
 /// Connection buffers are a Vec<u8>. The default implementation of `std::io::Write` for Vec<u8>
 /// will only ever append to the Vec. Implementations of rods_*_ser must assure that they
 /// write to the beginning of the buffer, i.e., we don't care at all what's in the buffer at
 /// the start of the function. This is because the buffer is reused across multiple calls to
 /// the serialization functions.
-use self::xml::{
-    BorrowingXMLDeserializable, BorrowingXMLSerializable, BorrowingXMLSerializableChild,
-    OwningXMLDeserializable, OwningXMLSerializable,
-};
 
-pub trait IrodsProtocol {
+pub trait ProtocolEncoding {
+    fn encode<M>(msg: &M, sink: &mut Vec<u8>) -> Result<usize, IrodsError>
+    where
+        M: Serialiazable;
+
+    fn decode<M>(src: &[u8]) -> Result<M, IrodsError>
+    where
+        M: Deserializable;
+
     fn as_enum() -> IrodsProt;
 }
 
-pub trait BorrowingSerializer: IrodsProtocol {
-    fn rods_borrowing_ser<'r, 's, BS>(src: BS, sink: &'r mut Vec<u8>) -> Result<usize, IrodsError>
-    where
-        BS: BorrowingSerializable<'s>,
-        's: 'r;
-}
-
-pub trait BorrowingDeserializer: IrodsProtocol {
-    fn rods_borrowing_de<'r, 's, BD>(src: &'s [u8]) -> Result<BD, IrodsError>
-    where
-        BD: BorrowingDeserializable<'r>,
-        's: 'r;
-}
-
-pub trait OwningSerializer: IrodsProtocol {
-    fn rods_owning_ser<OS: OwningSerializable>(
-        src: &OS,
-        sink: &mut Vec<u8>,
-    ) -> Result<usize, IrodsError>;
-}
-
-pub trait OwningDeserializer: IrodsProtocol {
-    fn rods_owning_de<OD: OwningDeserializble>(src: &[u8]) -> Result<OD, IrodsError>;
-}
-
-/// To implement a new encoding scheme, you must implemnent four traits corresponding to
-/// (Borrowing|Owning)(Serializable|Deserializable) and then add them as beounds
-/// the appropriate traits below.
-
-#[cfg(test)]
-pub trait BorrowingDeserializable<'s>: BorrowingXMLDeserializable<'s> + Debug {}
-#[cfg(not(test))]
-pub trait BorrowingDeserializable<'s>: BorrowingXMLDeserializable<'s> {}
-
-#[cfg(test)]
-pub trait BorrowingSerializable<'s>: BorrowingXMLSerializable<'s> + Debug {}
-#[cfg(not(test))]
-pub trait BorrowingSerializable<'s>: BorrowingXMLSerializable<'s> {}
-
-#[cfg(test)]
-pub trait OwningSerializable: OwningXMLSerializable + Debug {}
-#[cfg(not(test))]
-pub trait OwningSerializable: OwningXMLSerializable {}
-
-#[cfg(test)]
-pub trait OwningDeserializble: OwningXMLDeserializable + Debug {}
-#[cfg(not(test))]
-pub trait OwningDeserializble: OwningXMLDeserializable {}
-
-#[cfg(test)]
-pub trait BorrowingSerializableChild<'s>: BorrowingXMLSerializableChild<'s> + Debug {}
-#[cfg(not(test))]
-pub trait BorrowingSerializableChild<'s>: BorrowingXMLSerializableChild<'s> {}
+pub trait Deserializable: XMLDeserializable {}
+pub trait Serialiazable: XMLSerializable {}
