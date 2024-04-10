@@ -32,11 +32,7 @@ where
 {
     type Transport = TcpStream;
 
-    fn start(
-        &self,
-        acct: Account,
-    ) -> Result<Connection<T, Self::Transport>, IrodsError> {
-        let resources = Resourc
+    fn start(&self, acct: Account) -> Result<Connection<T, Self::Transport>, IrodsError> {
         let mut stream = TcpStream::connect(self.addr)?;
 
         let startup_pack = BorrowingStartupPack::new(

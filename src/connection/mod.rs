@@ -32,12 +32,15 @@ pub struct Account {
     pub proxy_zone: String,
 }
 
-// It might seem a bit inflexible to force all bites to come in  through
-// the bytes_buf, but it is actually MORE flexible since it doesn't force
-// an allocation of a new buffer if one is not needed. Moreover, if the user
-// wants to take ownership (e.g., if they want a String out of the bytes) buf,
-// they can just use `std::mem::take` to take ownership of the buffer.
 pub struct UnauthenticatedConnection<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    inner: Box<UnauthenticatedConnectionInner<T, C>>,
+}
+
+pub struct UnauthenticatedConnectionInner<T, C>
 where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
@@ -46,6 +49,13 @@ where
     account: Account,
     signature: Vec<u8>,
     phantom_protocol: PhantomData<T>,
+}
+
+impl<T, C> UnauthenticatedConnection<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
 }
 
 pub struct ResourceBundleInner<S>
@@ -88,6 +98,21 @@ impl<S> ResourceBundle<S>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+    fn map_into_transport<Q>(self, transport: Q) -> ResourceBundle<Q>
+    where
+        Q: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    {
+        ResourceBundle {
+            inner: Box::new(ResourceBundleInner {
+                header_buf: self.inner.header_buf,
+                msg_buf: self.inner.msg_buf,
+                bytes_buf: self.inner.bytes_buf,
+                error_buf: self.inner.error_buf,
+                connector: transport,
+            }),
+        }
+    }
+
     async fn send_header_len(
         inner: &mut ResourceBundleInner<S>,
         len: usize,
@@ -273,17 +298,19 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub(crate) fn new(account: Account, resources: ResourceBundle<C>) -> Self {
+    pub fn new(account: Account, resources: ResourceBundle<C>) -> Self {
         Self {
-            resources,
-            account,
-            signature: Vec::with_capacity(16),
-            phantom_protocol: PhantomData,
+            inner: Box::new(UnauthenticatedConnectionInner {
+                resources,
+                account,
+                signature: Vec::with_capacity(16),
+                phantom_protocol: PhantomData,
+            }),
         }
     }
 
     pub(crate) async fn send_startup_pack(
-        &mut self,
+        mut self,
         reconnect_flag: u32,
         connect_cnt: u32,
         proxy_user: String,
@@ -292,8 +319,9 @@ where
         client_zone: String,
         rel_version: (u8, u8, u8),
         option: String,
-    ) -> Result<&mut Self, IrodsError> {
-        self.resources
+    ) -> Result<Self, IrodsError> {
+        self.inner
+            .resources
             .send_header_then_msg::<T, _>(
                 &StartupPack::new(
                     T::as_enum(),
@@ -315,15 +343,16 @@ where
     }
 
     pub(crate) async fn get_server_cs_neg(
-        &mut self,
-    ) -> Result<(StandardHeader, ServerCsNeg, &mut Self), IrodsError> {
-        let (header, msg, _) = self.resources.get_header_and_msg::<T, _>().await?;
+        mut self,
+    ) -> Result<(StandardHeader, ServerCsNeg, Self), IrodsError> {
+        let (header, msg, _) = self.inner.resources.get_header_and_msg::<T, _>().await?;
 
         Ok((header, msg, self))
     }
 
-    pub(crate) async fn send_use_ssl(&mut self) -> Result<&mut Self, IrodsError> {
-        self.resources
+    pub(crate) async fn send_use_ssl(mut self) -> Result<Self, IrodsError> {
+        self.inner
+            .resources
             .send_header_then_msg::<T, _>(
                 &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_SSL),
                 MsgType::RodsCsNeg,
@@ -334,8 +363,9 @@ where
         Ok(self)
     }
 
-    pub(crate) async fn send_use_tcp(&mut self) -> Result<&mut Self, IrodsError> {
-        self.resources
+    pub(crate) async fn send_use_tcp(mut self) -> Result<Self, IrodsError> {
+        self.inner
+            .resources
             .send_header_then_msg::<T, _>(
                 &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_TCP),
                 MsgType::RodsCsNeg,
@@ -346,8 +376,9 @@ where
         Ok(self)
     }
 
-    pub(crate) async fn send_negotiation_failed(&mut self) -> Result<&mut Self, IrodsError> {
-        self.resources
+    pub(crate) async fn send_negotiation_failed(mut self) -> Result<Self, IrodsError> {
+        self.inner
+            .resources
             .send_header_then_msg::<T, _>(
                 &ClientCsNeg::new(0, CsNegResult::CS_NEG_FAILURE),
                 MsgType::RodsCsNeg,
@@ -358,8 +389,9 @@ where
         Ok(self)
     }
 
-    pub(crate) async fn get_version(&mut self) -> Result<(StandardHeader, &mut Self), IrodsError> {
+    pub(crate) async fn get_version(mut self) -> Result<(StandardHeader, Self), IrodsError> {
         let (header, _, _) = self
+            .inner
             .resources
             .get_header_and_msg::<T, StandardHeader>()
             .await?;
