@@ -223,6 +223,20 @@ where
         Ok(inner)
     }
 
+    pub(crate) async fn read_into_buf(
+        &mut self,
+        mut sink: &mut Vec<u8>,
+        len: usize,
+    ) -> Result<&mut Self, IrodsError> {
+        tokio::io::copy(
+            &mut (&mut self.inner.connector).take(len as u64),
+            &mut Cursor::new(sink),
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     pub(crate) async fn read_standard_header<T>(
         &mut self,
     ) -> Result<(StandardHeader, &mut Self), IrodsError>
@@ -302,10 +316,6 @@ where
         let (header, _) = self.read_standard_header::<T>().await?;
 
         let (msg, this) = self.read_msg::<T, M>(header.msg_len as usize).await?;
-
-        Self::read_to_bytes_buf(&mut this.inner, header.bs_len as usize)
-            .and_then(|inner| Self::read_to_error_buf(inner, header.error_len as usize))
-            .await?;
 
         Ok((header, msg, self))
     }
