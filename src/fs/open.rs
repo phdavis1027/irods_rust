@@ -1,9 +1,6 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{io, path::Path};
 
-use futures::{channel::mpsc::unbounded, sink::unfold, TryFutureExt};
+use futures::TryFutureExt;
 use rods_prot_msg::error::errors::IrodsError;
 
 use crate::{
@@ -20,7 +17,7 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub fn open_request(self, path: &Path) -> OpenRequest<T, C> {
+    pub fn open_request<'conn>(&'conn mut self, path: &'conn Path) -> OpenRequest<'conn, T, C> {
         OpenRequest::new(self, path)
     }
 
@@ -32,15 +29,15 @@ where
         }
         inp.data_size = -1;
 
-        unimplemented!()
+        inp
     }
 
     async fn open_inner(
-        mut self,
+        &mut self,
         path: &Path,
         flags: i32,
         resc: Option<&str>,
-    ) -> Result<(DataObjectHandle, Self), IrodsError> {
+    ) -> Result<(DataObjectHandle, &mut Self), IrodsError> {
         let handle = self
             .inner
             .resources
@@ -64,7 +61,7 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    conn: Connection<T, C>,
+    conn: &'conn mut Connection<T, C>,
     flags: i32,
     resc: Option<&'conn str>,
     path: &'conn Path,
@@ -75,7 +72,7 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub fn new(conn: Connection<T, C>, path: &'conn Path) -> Self {
+    pub fn new(conn: &'conn mut Connection<T, C>, path: &'conn Path) -> Self {
         Self {
             conn,
             flags: 0,
@@ -84,22 +81,24 @@ where
         }
     }
 
-    pub fn set_flag(&mut self, flag: OpenFlag) -> &mut Self {
+    pub fn set_flag(mut self, flag: OpenFlag) -> Self {
         self.flags |= flag as i32;
         self
     }
 
-    pub fn unset_flag(&mut self, flag: OpenFlag) -> &mut Self {
+    pub fn unset_flag(mut self, flag: OpenFlag) -> Self {
         self.flags &= !(flag as i32);
         self
     }
 
-    pub fn set_resc(&mut self, resc: &'conn str) -> &mut Self {
+    pub fn set_resc(mut self, resc: &'conn str) -> Self {
         self.resc = Some(resc);
         self
     }
 
-    pub async fn execute(self) -> Result<(DataObjectHandle, Connection<T, C>), IrodsError> {
+    pub async fn execute(
+        self,
+    ) -> Result<(DataObjectHandle, &'conn mut Connection<T, C>), IrodsError> {
         self.conn.open_inner(self.path, self.flags, self.resc).await
     }
 }

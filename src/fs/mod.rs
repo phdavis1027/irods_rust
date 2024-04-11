@@ -1,3 +1,4 @@
+pub mod close;
 pub mod open;
 
 /*
@@ -81,3 +82,51 @@ pub enum Whence {
 }
 
 pub type DataObjectHandle = i32;
+
+#[cfg(test)]
+mod test {
+    use std::{
+        net::{Ipv4Addr, SocketAddr, SocketAddrV4},
+        path::Path,
+    };
+
+    use deadpool::managed;
+    use futures::TryFutureExt;
+
+    use crate::{
+        bosd::xml::XML,
+        connection::{
+            authenticate::NativeAuthenticator, pool::IrodsManager, tcp::TcpConnector, Account,
+        },
+    };
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_open_close() {
+        let account = Account::test_account();
+
+        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(172, 18, 0, 3), 1247));
+        let connector = TcpConnector::new(addr);
+        let authenticator = NativeAuthenticator::new(30, "rods".into());
+        let manager: IrodsManager<XML, TcpConnector, NativeAuthenticator> =
+            IrodsManager::new(account, connector, authenticator, 10, 10);
+
+        let pool: managed::Pool<IrodsManager<_, _, _>> = managed::Pool::builder(manager)
+            .max_size(16)
+            .build()
+            .unwrap();
+
+        let mut conn = pool.get().await.unwrap();
+
+        println!("Successfuly got connection.");
+
+        let path = "/tempZone/home/rods/test.txt";
+        conn.open_request(&Path::new(path))
+            .set_flag(OpenFlag::ReadOnly)
+            .execute()
+            .and_then(|(handle, conn)| conn.close(handle))
+            .await
+            .unwrap();
+    }
+}

@@ -56,10 +56,10 @@ impl XMLSerializable for DataObjInp {
         tag!(writer, "objPath", &self.path);
         tag_fmt!(writer, "createMode", "{}", self.create_mode);
         tag_fmt!(writer, "openFlags", "{}", self.open_flags);
-        tag_fmt!(writer, "oprType", "{}", self.opr_type as i32);
         tag_fmt!(writer, "offset", "{}", self.offset);
         tag_fmt!(writer, "dataSize", "{}", self.data_size);
         tag_fmt!(writer, "numThreads", "{}", self.num_threads);
+        tag_fmt!(writer, "oprType", "{}", self.opr_type as i32);
 
         if let Some(ref spec_coll) = self.spec_coll {
             spec_coll.to_nested_xml(&mut writer)?;
