@@ -27,5 +27,5 @@ pub trait ProtocolEncoding {
     fn as_enum() -> IrodsProt;
 }
 
-pub trait Deserializable: XMLDeserializable {}
-pub trait Serialiazable: XMLSerializable {}
+pub trait Deserializable: XMLDeserializable + Debug {}
+pub trait Serialiazable: XMLSerializable + Debug {}

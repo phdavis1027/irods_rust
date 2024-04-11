@@ -726,6 +726,7 @@ dependencies = [
  "futures",
  "lazy_static",
  "md-5",
+ "native-tls",
  "quick-xml",
  "rand",
  "rods_prot_msg",

@@ -13,7 +13,7 @@ use quick_xml::{
     Writer,
 };
 
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+#[derive(Debug)]
 pub struct StartupPack {
     pub irods_prot: IrodsProt,
     pub reconn_flag: u32,
@@ -60,23 +60,27 @@ impl XMLSerializable for StartupPack {
 
         let irods_prot: &str = (&self.irods_prot).into();
 
+        writer.write_event(Event::Start(BytesStart::new("StartupPack_PI")))?;
+
         tag!(writer, "irodsProt", irods_prot);
         tag_fmt!(writer, "reconnFlag", "{}", self.reconn_flag);
         tag_fmt!(writer, "connectCnt", "{}", self.connect_cnt);
         tag!(writer, "proxyUser", &self.proxy_user);
-        tag!(writer, "proxyZone", &self.proxy_zone);
+        tag!(writer, "proxyRcatZone", &self.proxy_zone);
         tag!(writer, "clientUser", &self.client_user);
-        tag!(writer, "clientZone", &self.client_zone);
+        tag!(writer, "clientRcatZone", &self.client_zone);
         tag_fmt!(
             writer,
             "relVersion",
-            "{}.{}.{}",
+            "rods{}.{}.{}",
             self.rel_version.0,
             self.rel_version.1,
             self.rel_version.2
         );
         tag!(writer, "apiVersion", "d");
         tag!(writer, "option", &self.option);
+
+        writer.write_event(Event::End(BytesEnd::new("StartupPack_PI")))?;
 
         Ok(cursor.position() as usize)
     }

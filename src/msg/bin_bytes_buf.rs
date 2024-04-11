@@ -10,42 +10,35 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use std::io::Write;
 
-use crate::bosd::xml::BorrowingXMLDeserializable;
-use crate::bosd::BorrowingDeserializable;
-use crate::bosd::{xml::BorrowingXMLSerializable, BorrowingSerializable};
+use crate::bosd::xml::XMLDeserializable;
+use crate::bosd::xml::XMLSerializable;
+use crate::bosd::Deserializable;
+use crate::bosd::Serialiazable;
 use crate::tag;
 use crate::tag_fmt;
 
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-pub struct BorrowingStrBuf<'s> {
-    pub buf: Cow<'s, str>,
+#[derive(Debug, PartialEq, Eq)]
+pub struct BinBytesBuf {
+    pub buf: String,
 }
 
-impl<'s> BorrowingStrBuf<'s> {
-    pub fn new(buf: &'s str) -> Self {
-        BorrowingStrBuf {
-            buf: Cow::Borrowed(buf),
+impl BinBytesBuf {
+    pub fn new(buf: &str) -> Self {
+        BinBytesBuf {
+            buf: String::from(buf),
         }
     }
 }
 
-impl<'s> BorrowingSerializable<'s> for BorrowingStrBuf<'s> {}
-impl<'s> BorrowingXMLSerializable<'s> for BorrowingStrBuf<'s> {
-    fn borrowing_xml_serialize<'r>(
-        self,
-        sink: &'r mut Vec<u8>,
-    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError>
-    where
-        Self: Sized,
-        's: 'r,
-    {
+impl Serialiazable for BinBytesBuf {}
+impl XMLSerializable for BinBytesBuf {
+    fn to_xml(&self, mut sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("BinBytesBuf_PI")))?;
 
         tag_fmt!(writer, "buflen", "{}", self.buf.len());
-
         tag!(writer, "buf", &self.buf);
 
         writer.write_event(Event::End(BytesEnd::new("BinBytesBuf_PI")))?;
@@ -54,14 +47,11 @@ impl<'s> BorrowingXMLSerializable<'s> for BorrowingStrBuf<'s> {
     }
 }
 
-impl<'r> BorrowingDeserializable<'r> for BorrowingStrBuf<'r> {}
-impl<'r> BorrowingXMLDeserializable<'r> for BorrowingStrBuf<'r> {
-    fn borrowing_xml_deserialize<'s>(
-        source: &'s [u8],
-    ) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+impl Deserializable for BinBytesBuf {}
+impl XMLDeserializable for BinBytesBuf {
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
     where
         Self: Sized,
-        's: 'r,
     {
         #[derive(Debug)]
         #[repr(u8)]
@@ -72,7 +62,7 @@ impl<'r> BorrowingXMLDeserializable<'r> for BorrowingStrBuf<'r> {
             Buf,
             BufInner,
         }
-        let mut reader = quick_xml::Reader::from_reader(source);
+        let mut reader = quick_xml::Reader::from_reader(xml);
         let mut state = State::Tag;
 
         loop {
@@ -89,7 +79,9 @@ impl<'r> BorrowingXMLDeserializable<'r> for BorrowingStrBuf<'r> {
                 }
                 (State::Buf, Event::Start(ref e)) if e.name().as_ref() == b"buf" => State::BufInner,
                 (State::BufInner, Event::Text(ref e)) => {
-                    return Ok(BorrowingStrBuf { buf: e.unescape()? });
+                    return Ok(BinBytesBuf {
+                        buf: e.unescape()?.to_string(),
+                    });
                 }
                 (state, Event::Eof) => {
                     return Err(IrodsError::Other(format!(
@@ -100,34 +92,5 @@ impl<'r> BorrowingXMLDeserializable<'r> for BorrowingStrBuf<'r> {
                 (state, _) => state,
             };
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::bosd::xml::XML;
-    use crate::bosd::{BorrowingDeserializer, BorrowingSerializer};
-
-    #[test]
-    fn test_borrowing_str_buf_deserializes_correctly() {
-        let expected = BorrowingStrBuf::new("hello world");
-
-        let src = r#"<BinBytesBuf_PI><buflen>11</buflen><buf>hello world</buf></BinBytesBuf_PI>"#;
-        let result: BorrowingStrBuf = XML::rods_borrowing_de(src.as_bytes()).unwrap();
-
-        assert_eq!(expected, result);
-    }
-
-    #[test]
-    fn test_borrowing_str_buf_serializes_correctly() {
-        let expected =
-            r#"<BinBytesBuf_PI><buflen>11</buflen><buf>hello world</buf></BinBytesBuf_PI>"#;
-
-        let src = BorrowingStrBuf::new("hello world");
-        let mut sink = Vec::new();
-        XML::rods_borrowing_ser(src, &mut sink).unwrap();
-
-        assert_eq!(expected.as_bytes(), sink.as_slice());
     }
 }

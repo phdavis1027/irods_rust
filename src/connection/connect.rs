@@ -4,14 +4,16 @@ use crate::bosd::ProtocolEncoding;
 
 use super::{Account, ResourceBundle, UnauthenticatedConnection};
 
-pub trait Connect<T>
+pub trait Connect<T>: Send
 where
-    T: ProtocolEncoding,
+    T: ProtocolEncoding + Send,
 {
-    type Transport: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin;
+    type Transport: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send;
 
-    async fn connect(
+    fn connect(
         &self,
         acct: Account,
-    ) -> Result<UnauthenticatedConnection<T, Self::Transport>, IrodsError>;
+    ) -> impl std::future::Future<
+        Output = Result<UnauthenticatedConnection<T, Self::Transport>, IrodsError>,
+    > + std::marker::Send;
 }

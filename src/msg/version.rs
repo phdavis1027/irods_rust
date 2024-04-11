@@ -7,7 +7,7 @@ use rods_prot_msg::error::errors::IrodsError;
 
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Version {
     pub status: i32,
     pub rel_version: (u8, u8, u8),

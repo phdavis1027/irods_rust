@@ -1,5 +1,5 @@
 use std::{
-    fs::File,
+    borrow::BorrowMut,
     io::{BufReader, Read, Write},
     net::SocketAddr,
     path::PathBuf,
@@ -7,11 +7,14 @@ use std::{
 };
 
 use futures::TryFutureExt;
-use rand::{random, RngCore};
+use native_tls::TlsConnector;
 use rods_prot_msg::error::errors::IrodsError;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio_native_tls::{TlsConnector, TlsStream};
+use tokio::net::TcpStream as AsyncTcpStream;
+use tokio::{
+    fs::File,
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+};
+use tokio_native_tls::{TlsConnector as AsyncTlsConnector, TlsStream as AsyncTlsStream};
 
 use crate::{
     bosd::{xml::XML, ProtocolEncoding},
@@ -30,7 +33,7 @@ pub struct SslConfig {
     pub key_size: usize,
     pub salt_size: usize,
     pub hash_rounds: usize,
-    algorithm: String,
+    pub algorithm: String,
 }
 
 impl SslConfig {
@@ -49,6 +52,18 @@ impl SslConfig {
             salt_size,
             hash_rounds,
             algorithm,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn test_config() -> Self {
+        Self {
+            cert_file: PathBuf::from("server.crt"),
+            domain: "172.18.0.3".to_string(),
+            key_size: 32,
+            salt_size: 16,
+            hash_rounds: 8,
+            algorithm: "AES-256-CBC".to_string(),
         }
     }
 }
@@ -74,22 +89,24 @@ impl SslConnector {
     }
 }
 
+pub trait IntoConnection: Send {}
+
 impl<T> Connect<T> for SslConnector
 where
-    T: ProtocolEncoding,
+    T: ProtocolEncoding + Send,
 {
-    type Transport = TlsStream<TcpStream>;
+    type Transport = AsyncTlsStream<AsyncTcpStream>;
 
     async fn connect(
         &self,
         account: super::Account,
     ) -> Result<UnauthenticatedConnection<T, Self::Transport>, IrodsError> {
-        let tcp_resources = ResourceBundle::new(TcpStream::connect(self.inner.addr).await?);
+        let tcp_resources = ResourceBundle::new(AsyncTcpStream::connect(self.inner.addr).await?);
 
-        let mut conn: UnauthenticatedConnection<T, TcpStream> =
+        let mut conn: UnauthenticatedConnection<T, AsyncTcpStream> =
             UnauthenticatedConnection::new(account.clone(), tcp_resources);
 
-        let conn = conn
+        let mut conn = conn
             .send_startup_pack(
                 0,
                 0,
@@ -98,7 +115,7 @@ where
                 account.client_user.clone(),
                 account.client_zone.clone(),
                 (4, 3, 2),
-                "rust;request_server_negotiation;".to_string(),
+                "rust;request_server_negotiation".to_string(),
             )
             .and_then(|conn| conn.get_server_cs_neg())
             .and_then(|(header, cs_neg, conn)| {
@@ -108,6 +125,17 @@ where
             .and_then(|conn| conn.get_version())
             .await?;
 
-        todo!()
+        let cert = conn.create_cert(&self.inner.config).await?;
+
+        let blocking_connector = TlsConnector::builder()
+            .add_root_certificate(cert)
+            .danger_accept_invalid_certs(true) // FIXME: Only for testing
+            .build()
+            .unwrap();
+
+        conn.into_tls(blocking_connector, &self.inner.config.domain)
+            .and_then(|conn| conn.send_handshake_header(&self.inner.config))
+            .and_then(|conn| conn.send_shared_secret(self.inner.config.key_size))
+            .await
     }
 }

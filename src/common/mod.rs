@@ -2,8 +2,7 @@ pub mod cond_input_kw;
 
 use rods_prot_msg::error::errors::IrodsError;
 
-#[cfg_attr(test, derive(Debug))]
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum IrodsProt {
     XML,
     Native,
@@ -18,8 +17,7 @@ impl From<&IrodsProt> for &str {
     }
 }
 
-#[cfg_attr(test, derive(Debug))]
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum CsNegPolicy {
     CS_NEG_REFUSE,
     CS_NEG_REQUIRE,
@@ -49,7 +47,7 @@ impl TryFrom<&str> for CsNegPolicy {
     }
 }
 
-#[cfg_attr(test, derive(Debug))]
+#[derive(Debug)]
 pub enum CsNegResult {
     CS_NEG_FAILURE,
     CS_NEG_USE_SSL,

@@ -11,7 +11,7 @@ use crate::{
     tag_fmt,
 };
 
-#[cfg_attr(test, derive(Debug))]
+#[derive(Debug)]
 pub struct ServerCsNeg {
     pub status: i32,
     pub result: CsNegPolicy,
@@ -77,7 +77,7 @@ impl XMLDeserializable for ServerCsNeg {
     }
 }
 
-#[cfg_attr(test, derive(Debug))]
+#[derive(Debug)]
 pub struct ClientCsNeg {
     pub status: i32,
     pub result: CsNegResult,

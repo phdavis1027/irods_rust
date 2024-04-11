@@ -1,4 +1,4 @@
-// pub mod bin_bytes_buf;
+pub mod bin_bytes_buf;
 // pub mod cond_input;
 pub mod cs_neg;
 // pub mod data_obj_inp;

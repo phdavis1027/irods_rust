@@ -1,18 +1,10 @@
-use std::net::{SocketAddr, TcpStream};
-
+use crate::bosd::ProtocolEncoding;
+use futures::TryFutureExt;
 use rods_prot_msg::error::errors::IrodsError;
+use std::net::SocketAddr;
+use tokio::net::TcpStream as AsyncTcpStream;
 
-use crate::{
-    bosd::{
-        xml::XML, BorrowingDeserializer, BorrowingSerializer, OwningDeserializer, OwningSerializer,
-    },
-    msg::{startup_pack::BorrowingStartupPack, version::BorrowingVersion},
-};
-
-use super::{
-    connect::Connect, read_header_and_borrowing_msg, send_borrowing_msg_and_header, Account,
-    Connection,
-};
+use super::{connect::Connect, Account, Connection, ResourceBundle, UnauthenticatedConnection};
 
 #[derive(Clone)]
 pub struct TcpConnector {
@@ -27,49 +19,30 @@ impl TcpConnector {
 
 impl<T> Connect<T> for TcpConnector
 where
-    T: BorrowingSerializer + BorrowingDeserializer,
-    T: OwningDeserializer + OwningSerializer,
+    T: ProtocolEncoding + Send + Sync + 'static,
 {
-    type Transport = TcpStream;
+    type Transport = AsyncTcpStream;
 
-    fn start(&self, acct: Account) -> Result<Connection<T, Self::Transport>, IrodsError> {
-        let mut stream = TcpStream::connect(self.addr)?;
+    async fn connect(
+        &self,
+        account: Account,
+    ) -> Result<super::UnauthenticatedConnection<T, Self::Transport>, IrodsError> {
+        let tcp_resources = ResourceBundle::new(AsyncTcpStream::connect(self.addr).await?);
 
-        let startup_pack = BorrowingStartupPack::new(
-            T::as_enum(),
+        let conn: UnauthenticatedConnection<T, AsyncTcpStream> =
+            UnauthenticatedConnection::new(account.clone(), tcp_resources);
+
+        conn.send_startup_pack(
             0,
             0,
-            &acct.proxy_user,
-            &acct.proxy_zone,
-            &acct.client_user,
-            &acct.client_zone,
-            (4, 3, 0),
-            "d",
-            "packe",
-        );
-
-        send_borrowing_msg_and_header::<XML, _, _>(
-            &mut stream,
-            startup_pack,
-            crate::msg::header::MsgType::RodsConnect,
-            0,
-            &mut msg_buf,
-            &mut header_buf,
-        )?;
-
-        let (_, version): (_, BorrowingVersion) =
-            read_header_and_borrowing_msg::<_, XML, _>(&mut msg_buf, &mut header_buf, &mut stream)?;
-
-        if version.rel_version.0 != 4 {
-            return Err(IrodsError::Other("Unsupported server version".into()));
-        }
-
-        if version.status < 0 {
-            return Err(IrodsError::Other("Server returned an error".into()));
-        }
-
-        let connection = Connection::new(stream, acct, header_buf, msg_buf, bytes_buf, error_buf);
-
-        Ok(connection)
+            account.proxy_user.clone(),
+            account.proxy_zone.clone(),
+            account.client_user.clone(),
+            account.client_zone.clone(),
+            (4, 3, 2),
+            "rust".to_string(),
+        )
+        .and_then(|conn| conn.get_version())
+        .await
     }
 }
