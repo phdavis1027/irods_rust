@@ -1,18 +1,15 @@
 use rods_prot_msg::error::errors::IrodsError;
 
-use crate::bosd::{
-    xml::{OwningXMLDeserializable, OwningXMLSerializable},
-    OwningDeserializble,
-};
+use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
-#[cfg_attr(test, derive(Debug))]
-pub struct OwningFileLseekOut {
+#[derive(Debug)]
+pub struct FileLseekOut {
     pub offset: usize,
 }
 
-impl OwningDeserializble for OwningFileLseekOut {}
-impl OwningXMLDeserializable for OwningFileLseekOut {
-    fn owning_xml_deserialize(src: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+impl Deserializable for FileLseekOut {}
+impl XMLDeserializable for FileLseekOut {
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
     where
         Self: Sized,
     {
@@ -27,7 +24,7 @@ impl OwningXMLDeserializable for OwningFileLseekOut {
 
         let mut state = State::Tag;
 
-        let mut reader = quick_xml::Reader::from_reader(src);
+        let mut reader = quick_xml::Reader::from_reader(xml);
 
         loop {
             state = match (state, reader.read_event()?) {

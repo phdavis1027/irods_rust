@@ -1,5 +1,4 @@
-#[cfg_attr(test, derive(Debug))]
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum CondInputKw {
     AllKw,
     CopiesKw,

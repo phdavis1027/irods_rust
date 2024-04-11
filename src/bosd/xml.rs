@@ -37,6 +37,13 @@ pub(crate) trait XMLSerializable {
     fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError>;
 }
 
+pub(crate) trait XMLSerializableChild {
+    fn to_nested_xml<'r, 't1, 't2>(
+        &self,
+        writer: &'r mut Writer<&'t1 mut Cursor<&'t2 mut Vec<u8>>>,
+    ) -> Result<(), IrodsError>;
+}
+
 impl ProtocolEncoding for XML {
     fn as_enum() -> IrodsProt {
         IrodsProt::XML

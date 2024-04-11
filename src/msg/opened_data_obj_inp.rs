@@ -3,13 +3,13 @@ use std::io::{Cursor, Write};
 use quick_xml::events::{BytesEnd, BytesStart, Event};
 
 use crate::{
-    bosd::{xml::OwningXMLSerializable, OwningSerializable},
+    bosd::{xml::XMLSerializable, Serialiazable},
     fs::{OprType, Whence},
     tag_fmt,
 };
 
-#[cfg_attr(test, derive(Debug))]
-pub struct OwningOpenedDataObjInp {
+#[derive(Debug)]
+pub struct OpenedDataObjInp {
     pub fd: i32,
     pub len: usize,
     pub whence: Whence,
@@ -18,7 +18,7 @@ pub struct OwningOpenedDataObjInp {
     pub bytes_written: usize,
 }
 
-impl OwningOpenedDataObjInp {
+impl OpenedDataObjInp {
     pub fn new(
         fd: i32,
         len: usize,
@@ -38,11 +38,11 @@ impl OwningOpenedDataObjInp {
     }
 }
 
-impl OwningSerializable for OwningOpenedDataObjInp {}
-impl OwningXMLSerializable for OwningOpenedDataObjInp {
-    fn owning_xml_serialize(
+impl Serialiazable for OpenedDataObjInp {}
+impl XMLSerializable for OpenedDataObjInp {
+    fn to_xml(
         &self,
-        mut sink: &mut Vec<u8>,
+        sink: &mut Vec<u8>,
     ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = quick_xml::Writer::new(&mut cursor);

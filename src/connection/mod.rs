@@ -586,7 +586,7 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    inner: Box<ConnectionInner<T, C>>,
+    pub inner: Box<ConnectionInner<T, C>>,
 }
 
 impl<T, C> Connection<T, C>
@@ -611,8 +611,8 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    resources: ResourceBundle<C>,
-    account: Account,
-    signature: Vec<u8>,
-    phantom_protocol: PhantomData<T>,
+    pub(crate) resources: ResourceBundle<C>,
+    pub(crate) account: Account,
+    pub(crate) signature: Vec<u8>,
+    pub(crate) phantom_protocol: PhantomData<T>,
 }
