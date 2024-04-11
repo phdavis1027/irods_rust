@@ -1,5 +1,6 @@
 pub mod close;
 pub mod open;
+pub mod seek;
 
 /*
 #define S_IRWXU 0000700    /* RWX mask for owner */
@@ -103,7 +104,7 @@ mod test {
     use super::*;
 
     #[tokio::test]
-    async fn test_open_close() {
+    async fn test_open_close_sync() {
         let account = Account::test_account();
 
         let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(172, 18, 0, 3), 1247));
@@ -122,10 +123,16 @@ mod test {
         println!("Successfuly got connection.");
 
         let path = "/tempZone/home/rods/test.txt";
-        conn.open_request(&Path::new(path))
+        let handle = conn
+            .open_request(&Path::new(path))
             .set_flag(OpenFlag::ReadOnly)
             .execute()
-            .and_then(|(handle, conn)| conn.close(handle))
+            .and_then(|(handle, _)| async move { Ok(handle) })
+            .await
+            .unwrap();
+
+        conn.seek(handle, Whence::SeekSet, 10)
+            .and_then(|conn| conn.close(handle))
             .await
             .unwrap();
     }

@@ -20,8 +20,6 @@ impl XMLDeserializable for FileLseekOut {
             OffsetInner,
         }
 
-        let mut offset: Option<usize> = None;
-
         let mut state = State::Tag;
 
         let mut reader = quick_xml::Reader::from_reader(xml);
@@ -29,7 +27,7 @@ impl XMLDeserializable for FileLseekOut {
         loop {
             state = match (state, reader.read_event()?) {
                 (State::Tag, quick_xml::events::Event::Start(ref e))
-                    if e.name().as_ref() == b"offset" =>
+                    if e.name().as_ref() == b"fileLseekOut_PI" =>
                 {
                     State::Offset
                 }
@@ -39,9 +37,8 @@ impl XMLDeserializable for FileLseekOut {
                     State::OffsetInner
                 }
                 (State::OffsetInner, quick_xml::events::Event::Text(e)) => {
-                    offset = Some(e.unescape()?.parse()?);
                     return Ok(Self {
-                        offset: offset.unwrap(),
+                        offset: e.unescape()?.parse()?,
                     });
                 }
                 (_, quick_xml::events::Event::Eof) => {
