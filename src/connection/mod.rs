@@ -58,25 +58,7 @@ impl Account {
     }
 }
 
-pub struct UnauthenticatedConnection<T, C>
-where
-    T: ProtocolEncoding,
-    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
-{
-    inner: Box<UnauthenticatedConnectionInner<T, C>>,
-}
-
-pub struct UnauthenticatedConnectionInner<T, C>
-where
-    T: ProtocolEncoding,
-    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
-{
-    resources: ResourceBundle<C>,
-    account: Account,
-    phantom_protocol: PhantomData<T>,
-}
-
-pub struct ResourceBundleInner<S>
+pub struct ResourceBundle<S>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
@@ -84,30 +66,20 @@ where
     pub msg_buf: Vec<u8>,
     pub bytes_buf: Vec<u8>,
     pub error_buf: Vec<u8>,
-    pub connector: S,
-}
-
-#[repr(transparent)]
-pub struct ResourceBundle<S>
-where
-    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
-{
-    inner: Box<ResourceBundleInner<S>>,
+    pub transport: S,
 }
 
 impl<S> ResourceBundle<S>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub fn new(connector: S) -> Self {
+    pub fn new(transport: S) -> Self {
         Self {
-            inner: Box::new(ResourceBundleInner {
-                header_buf: Vec::new(),
-                msg_buf: Vec::new(),
-                bytes_buf: Vec::new(),
-                error_buf: Vec::new(),
-                connector,
-            }),
+            header_buf: Vec::new(),
+            msg_buf: Vec::new(),
+            bytes_buf: Vec::new(),
+            error_buf: Vec::new(),
+            transport,
         }
     }
 }
@@ -130,11 +102,9 @@ where
             config.hash_rounds,
         );
 
-        let header_len = T::encode(&header, &mut self.inner.header_buf)?;
-
-        Self::send_header_len(&mut self.inner, header_len)
-            .and_then(|this| Self::send_from_header_buf(this, header_len))
-            .await?;
+        let header_len = T::encode(&header, &mut self.header_buf)?;
+        self.send_header_len(header_len).await?;
+        self.send_from_header_buf(header_len).await?;
 
         Ok(())
     }
@@ -143,194 +113,128 @@ where
     where
         T: ProtocolEncoding,
     {
-        let shared_secret = &mut self.inner.bytes_buf[..size];
+        let shared_secret = &mut self.bytes_buf[..size];
         rand::thread_rng().fill_bytes(shared_secret);
 
         let header = SharedSecretHeader { size };
-        let header_len = T::encode(&header, &mut self.inner.header_buf)?;
+        let header_len = T::encode(&header, &mut self.header_buf)?;
 
-        Self::send_header_len(&mut self.inner, header_len)
-            .and_then(|this| Self::send_from_header_buf(this, header_len))
-            .and_then(|this| Self::send_from_bytes_buf(this, size))
-            .await?;
+        self.send_header_len(header_len).await?;
+        self.send_from_header_buf(header_len).await?;
+        self.send_from_bytes_buf(size).await?;
 
         Ok(())
     }
 
-    fn map_into_transport<D>(self, transport: D) -> ResourceBundle<D>
-    where
-        D: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
-    {
-        ResourceBundle {
-            inner: Box::new(ResourceBundleInner {
-                header_buf: self.inner.header_buf,
-                msg_buf: self.inner.msg_buf,
-                bytes_buf: self.inner.bytes_buf,
-                error_buf: self.inner.error_buf,
-                connector: transport,
-            }),
-        }
+    async fn send_from_bytes_buf(&mut self, len: usize) -> Result<(), IrodsError> {
+        self.transport.write_all(&mut self.bytes_buf[..len]).await?;
+        Ok(())
     }
 
-    async fn send_from_bytes_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
-        inner
-            .connector
-            .write_all(&mut inner.bytes_buf[..len])
-            .await?;
-        Ok(inner)
-    }
-
-    async fn send_header_len(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
-        inner
-            .connector
+    async fn send_header_len(&mut self, len: usize) -> Result<(), IrodsError> {
+        self.transport
             .write_all(&(len as u32).to_be_bytes())
             .await?;
-        Ok(inner)
+        Ok(())
     }
 
-    async fn send_from_msg_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
-        inner.connector.write_all(&mut inner.msg_buf[..len]).await?;
-        Ok(inner)
+    async fn send_from_msg_buf(&mut self, len: usize) -> Result<(), IrodsError> {
+        self.transport.write_all(&mut self.msg_buf[..len]).await?;
+        Ok(())
     }
 
-    async fn send_from_header_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
-        inner
-            .connector
-            .write_all(&mut inner.header_buf[..len])
+    async fn send_from_header_buf(&mut self, len: usize) -> Result<(), IrodsError> {
+        self.transport
+            .write_all(&mut self.header_buf[..len])
             .await?;
-        Ok(inner)
+        Ok(())
     }
 
-    async fn read_to_msg_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
+    async fn read_to_msg_buf(&mut self, len: usize) -> Result<(), IrodsError> {
         tokio::io::copy(
-            &mut (&mut inner.connector).take(len as u64),
-            &mut Cursor::new(&mut inner.msg_buf),
+            &mut (&mut self.transport).take(len as u64),
+            &mut Cursor::new(&mut self.msg_buf),
         )
         .await?;
-        Ok(inner)
+
+        Ok(())
     }
 
-    async fn read_to_header_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
+    async fn read_to_header_buf(&mut self, len: usize) -> Result<(), IrodsError> {
         tokio::io::copy(
-            &mut (&mut inner.connector).take(len as u64),
-            &mut Cursor::new(&mut inner.header_buf),
+            &mut (&mut self.transport).take(len as u64),
+            &mut Cursor::new(&mut self.header_buf),
         )
         .await?;
-        Ok(inner)
+        Ok(())
     }
 
-    async fn read_to_bytes_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
+    async fn read_to_bytes_buf(&mut self, len: usize) -> Result<(), IrodsError> {
         tokio::io::copy(
-            &mut (&mut inner.connector).take(len as u64),
-            &mut Cursor::new(&mut inner.bytes_buf),
+            &mut (&mut self.transport).take(len as u64),
+            &mut Cursor::new(&mut self.bytes_buf),
         )
         .await?;
-        Ok(inner)
+
+        Ok(())
     }
 
-    async fn read_to_error_buf(
-        inner: &mut ResourceBundleInner<S>,
-        len: usize,
-    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
+    async fn read_to_error_buf(&mut self, len: usize) -> Result<(), IrodsError> {
         tokio::io::copy(
-            &mut (&mut inner.connector).take(len as u64),
-            &mut Cursor::new(&mut inner.error_buf),
+            &mut (&mut self.transport).take(len as u64),
+            &mut Cursor::new(&mut self.error_buf),
         )
         .await?;
-        Ok(inner)
+        Ok(())
     }
 
     pub(crate) async fn read_into_buf(
         &mut self,
-        mut sink: &mut Vec<u8>,
+        sink: &mut Vec<u8>,
         len: usize,
-    ) -> Result<&mut Self, IrodsError> {
+    ) -> Result<(), IrodsError> {
         tokio::io::copy(
-            &mut (&mut self.inner.connector).take(len as u64),
+            &mut (&mut self.transport).take(len as u64),
             &mut Cursor::new(sink),
         )
         .await?;
 
-        Ok(self)
+        Ok(())
     }
 
-    pub(crate) async fn read_standard_header<T>(
-        &mut self,
-    ) -> Result<(StandardHeader, &mut Self), IrodsError>
+    pub(crate) async fn read_standard_header<T>(&mut self) -> Result<StandardHeader, IrodsError>
     where
         T: ProtocolEncoding,
     {
-        let header = Self::read_to_header_buf(&mut self.inner, 4)
-            .and_then(|inner| async {
-                let header_len =
-                    u32::from_be_bytes(inner.header_buf[..4].try_into().unwrap()) as usize;
+        self.read_to_header_buf(4).await?;
+        let header_len = u32::from_be_bytes(self.header_buf[..4].try_into().unwrap()) as usize;
+        self.read_to_header_buf(header_len).await?;
 
-                println!("Header length: {}", header_len);
-                let inner = Self::read_to_header_buf(inner, header_len).await?;
-
-                Ok(T::decode(&inner.header_buf[..header_len])?)
-            })
-            .await?;
-
-        println!("Received header: {:?}", header);
-
-        Ok((header, self))
+        Ok(T::decode(&self.header_buf[..header_len])?)
     }
 
-    pub(crate) async fn read_msg<T, M>(&mut self, len: usize) -> Result<(M, &mut Self), IrodsError>
+    pub(crate) async fn read_msg<T, M>(&mut self, len: usize) -> Result<M, IrodsError>
     where
         T: ProtocolEncoding,
         M: Deserializable,
     {
-        let msg = async {
-            let inner = Self::read_to_msg_buf(&mut self.inner, len).await?;
-            Ok::<_, IrodsError>(T::decode(&inner.msg_buf[..len])?)
-        }
-        .await?;
-
-        println!("Received message: {:?}", msg);
-
-        Ok((msg, self))
+        self.read_to_msg_buf(len).await?;
+        Ok(T::decode(&self.msg_buf[..len])?)
     }
 
     pub(crate) async fn send_standard_header<T>(
         &mut self,
         header: StandardHeader,
-    ) -> Result<&mut Self, IrodsError>
+    ) -> Result<(), IrodsError>
     where
         T: ProtocolEncoding,
     {
-        println!("Sending header: {:?}", header);
-        let len = T::encode(&header, &mut self.inner.header_buf)?;
+        let len = T::encode(&header, &mut self.header_buf)?;
 
-        Self::send_header_len(&mut self.inner, len)
-            .and_then(|inner| Self::send_from_header_buf(inner, len))
-            .await?;
+        self.send_header_len(len).await?;
+        self.send_from_header_buf(len).await?;
 
-        println!("Sent header: {:?}", header);
-
-        Ok(self)
+        Ok(())
     }
 
     pub(crate) async fn send_msg<T, M>(&mut self, msg: M) -> Result<&mut Self, IrodsError>
@@ -338,27 +242,24 @@ where
         T: ProtocolEncoding,
         M: Serialiazable,
     {
-        println!("Sending message: {:?}", msg);
+        let len = T::encode(&msg, &mut self.msg_buf)?;
 
-        let len = T::encode(&msg, &mut self.inner.msg_buf)?;
-
-        Self::send_from_msg_buf(&mut self.inner, len).await?;
+        self.send_from_msg_buf(len).await?;
 
         Ok(self)
     }
 
     pub(crate) async fn get_header_and_msg<T, M>(
         &mut self,
-    ) -> Result<(StandardHeader, M, &mut Self), IrodsError>
+    ) -> Result<(StandardHeader, M), IrodsError>
     where
         T: ProtocolEncoding,
         M: Deserializable,
     {
-        let (header, _) = self.read_standard_header::<T>().await?;
+        let header = self.read_standard_header::<T>().await?;
+        let msg = self.read_msg::<T, M>(header.msg_len as usize).await?;
 
-        let (msg, _) = self.read_msg::<T, M>(header.msg_len as usize).await?;
-
-        Ok((header, msg, self))
+        Ok((header, msg))
     }
 
     pub(crate) async fn send_header_then_msg<T, M>(
@@ -366,24 +267,23 @@ where
         msg: &M,
         msg_type: MsgType,
         int_info: i32,
-    ) -> Result<&mut Self, IrodsError>
+    ) -> Result<(), IrodsError>
     where
         T: ProtocolEncoding,
         M: Serialiazable,
     {
-        let msg_len = T::encode(msg, &mut self.inner.msg_buf)?;
+        let msg_len = T::encode(msg, &mut self.msg_buf)?;
 
         let header = StandardHeader::new(msg_type, msg_len, 0, 0, int_info);
 
-        Self::send_standard_header::<T>(self, header)
-            .and_then(|this| Self::send_from_msg_buf(&mut this.inner, msg_len))
-            .await?;
+        self.send_standard_header::<T>(header).await?;
+        self.send_from_msg_buf(msg_len).await?;
 
-        Ok(self)
+        Ok(())
     }
 }
 
-impl<T> UnauthenticatedConnection<T, TcpStream>
+impl<T> UninitializedConnection<T, TcpStream>
 where
     T: ProtocolEncoding,
 {
@@ -391,48 +291,93 @@ where
         self,
         connector: TlsConnector,
         domain: &str,
-    ) -> Result<UnauthenticatedConnection<T, tokio_native_tls::TlsStream<TcpStream>>, IrodsError>
+    ) -> Result<UninitializedConnection<T, tokio_native_tls::TlsStream<TcpStream>>, IrodsError>
     {
-        let tcp_stream = self.inner.resources.inner.connector;
+        let tcp_stream = self.resources.transport;
 
         let async_connector = tokio_native_tls::TlsConnector::from(connector);
         let tls_stream = async_connector.connect(domain, tcp_stream).await?;
 
-        Ok(UnauthenticatedConnection {
-            inner: Box::new(UnauthenticatedConnectionInner {
-                resources: ResourceBundle {
-                    inner: Box::new(ResourceBundleInner {
-                        header_buf: self.inner.resources.inner.header_buf,
-                        msg_buf: self.inner.resources.inner.msg_buf,
-                        bytes_buf: self.inner.resources.inner.bytes_buf,
-                        error_buf: self.inner.resources.inner.error_buf,
-                        connector: tls_stream,
-                    }),
-                },
-                account: self.inner.account,
-                phantom_protocol: PhantomData,
-            }),
+        Ok(UninitializedConnection {
+            resources: ResourceBundle {
+                header_buf: self.resources.header_buf,
+                msg_buf: self.resources.msg_buf,
+                bytes_buf: self.resources.bytes_buf,
+                error_buf: self.resources.error_buf,
+                transport: tls_stream,
+            },
+            account: self.account,
+            phantom_protocol: PhantomData,
         })
+    }
+
+    pub(crate) async fn send_use_tcp(mut self) -> Result<Self, IrodsError> {
+        self.resources
+            .send_header_then_msg::<T, _>(
+                &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_TCP),
+                MsgType::RodsCsNeg,
+                0,
+            )
+            .await?;
+
+        Ok(self)
     }
 }
 
-impl<T, C> UnauthenticatedConnection<T, C>
+impl<T> UninitializedConnection<T, TlsStream<TcpStream>>
+where
+    T: ProtocolEncoding,
+{
+    pub(crate) async fn get_server_cs_neg(
+        mut self,
+    ) -> Result<(StandardHeader, ServerCsNeg), IrodsError> {
+        self.resources.get_header_and_msg::<T, _>().await
+    }
+
+    pub(crate) async fn send_use_ssl(mut self) -> Result<Self, IrodsError> {
+        self.resources
+            .send_header_then_msg::<T, _>(
+                &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_SSL),
+                MsgType::RodsCsNeg,
+                0,
+            )
+            .await?;
+
+        Ok(self)
+    }
+
+    pub(crate) async fn send_shared_secret(mut self, size: usize) -> Result<(), IrodsError> {
+        self.resources.send_shared_secret::<T>(size).await?;
+
+        Ok(())
+    }
+}
+
+pub struct UninitializedConnection<T, C>
 where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub fn new(account: Account, resources: ResourceBundle<C>) -> Self {
-        Self {
-            inner: Box::new(UnauthenticatedConnectionInner {
-                resources,
-                account,
-                phantom_protocol: PhantomData,
-            }),
-        }
+    resources: ResourceBundle<C>,
+    account: Account,
+    phantom_protocol: PhantomData<T>,
+}
+
+impl<T, C> UninitializedConnection<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    pub(crate) fn into_unauthenticated(self) -> UnauthenticatedConnection<T, C> {
+        UnauthenticatedConnection::new(self.account, self.resources)
     }
 
-    pub(crate) fn into_authenticated(self, signature: Vec<u8>) -> Connection<T, C> {
-        Connection::new(self.inner.account, self.inner.resources, signature)
+    pub fn new(account: Account, resources: ResourceBundle<C>) -> Self {
+        Self {
+            resources,
+            account,
+            phantom_protocol: PhantomData,
+        }
     }
 
     pub(crate) async fn send_startup_pack(
@@ -445,9 +390,8 @@ where
         client_zone: String,
         rel_version: (u8, u8, u8),
         option: String,
-    ) -> Result<Self, IrodsError> {
-        self.inner
-            .resources
+    ) -> Result<(), IrodsError> {
+        self.resources
             .send_header_then_msg::<T, _>(
                 &StartupPack::new(
                     T::as_enum(),
@@ -465,46 +409,11 @@ where
             )
             .await?;
 
-        Ok(self)
-    }
-
-    pub(crate) async fn get_server_cs_neg(
-        mut self,
-    ) -> Result<(StandardHeader, ServerCsNeg, Self), IrodsError> {
-        let (header, msg, _) = self.inner.resources.get_header_and_msg::<T, _>().await?;
-
-        Ok((header, msg, self))
-    }
-
-    pub(crate) async fn send_use_ssl(mut self) -> Result<Self, IrodsError> {
-        self.inner
-            .resources
-            .send_header_then_msg::<T, _>(
-                &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_SSL),
-                MsgType::RodsCsNeg,
-                0,
-            )
-            .await?;
-
-        Ok(self)
-    }
-
-    pub(crate) async fn send_use_tcp(mut self) -> Result<Self, IrodsError> {
-        self.inner
-            .resources
-            .send_header_then_msg::<T, _>(
-                &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_TCP),
-                MsgType::RodsCsNeg,
-                0,
-            )
-            .await?;
-
-        Ok(self)
+        Ok(())
     }
 
     pub(crate) async fn send_negotiation_failed(mut self) -> Result<Self, IrodsError> {
-        self.inner
-            .resources
+        self.resources
             .send_header_then_msg::<T, _>(
                 &ClientCsNeg::new(0, CsNegResult::CS_NEG_FAILURE),
                 MsgType::RodsCsNeg,
@@ -515,16 +424,19 @@ where
         Ok(self)
     }
 
-    pub(crate) async fn get_version(mut self) -> Result<Self, IrodsError> {
-        let (header, version, _) = self
-            .inner
-            .resources
-            .get_header_and_msg::<T, Version>()
-            .await?;
+    pub(crate) async fn get_version(mut self) -> Result<(), IrodsError> {
+        let (header, version) = self.resources.get_header_and_msg::<T, Version>().await?;
+        // TODO: Check version
+        Ok(())
+    }
 
-        // TODO: Check header and version
+    pub(crate) async fn send_handshake_header(
+        mut self,
+        config: &SslConfig,
+    ) -> Result<(), IrodsError> {
+        self.resources.send_handshake_header::<T>(config).await?;
 
-        Ok(self)
+        Ok(())
     }
 
     pub(crate) async fn create_cert(
@@ -533,21 +445,35 @@ where
     ) -> Result<Certificate, IrodsError> {
         File::open(&config.cert_file)
             .await?
-            .read_to_end(&mut self.inner.resources.inner.bytes_buf)
+            .read_to_end(&mut self.resources.bytes_buf)
             .await?;
 
-        Ok(Certificate::from_pem(
-            &self.inner.resources.inner.bytes_buf,
-        )?)
+        Ok(Certificate::from_pem(&self.resources.bytes_buf)?)
     }
+}
 
+pub struct UnauthenticatedConnection<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    resources: ResourceBundle<C>,
+    account: Account,
+    phantom_protocol: PhantomData<T>,
+}
+
+impl<T, C> UnauthenticatedConnection<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
     pub(crate) async fn send_auth_request(
         mut self,
         authenticator: &NativeAuthenticator,
     ) -> Result<Self, IrodsError> {
         // BytesBuf = unencoded buf
         // ErrorBuf = encoded buf
-        let mut unencoded_cursor = Cursor::new(&mut self.inner.resources.inner.bytes_buf);
+        let mut unencoded_cursor = Cursor::new(&mut self.resources.bytes_buf);
 
         write!(
             unencoded_cursor,
@@ -561,13 +487,11 @@ where
             "zone_name": "{2}"
         }}
         "##,
-            authenticator.a_ttl, self.inner.account.client_user, self.inner.account.client_zone
+            authenticator.a_ttl, self.account.client_user, self.account.client_zone
         )?;
 
         let unencoded_len = unencoded_cursor.position() as usize;
-        self.inner
-            .resources
-            .inner
+        self.resources
             .error_buf
             .resize(4 * (unencoded_len / 3 + 4), 0);
 
@@ -575,15 +499,13 @@ where
             .b64_engine
             .encode_slice(
                 &unencoded_cursor.get_mut()[..unencoded_len],
-                self.inner.resources.inner.error_buf.as_mut_slice(),
+                self.resources.error_buf.as_mut_slice(),
             ) // FIXME: This sucks
             .map_err(|e| IrodsError::Other(format!("{}", e)))?;
 
-        let encoded_str =
-            std::str::from_utf8(&self.inner.resources.inner.error_buf[..payload_len])?;
+        let encoded_str = std::str::from_utf8(&self.resources.error_buf[..payload_len])?;
 
-        self.inner
-            .resources
+        self.resources
             .send_header_then_msg::<T, _>(
                 &BinBytesBuf::new(encoded_str),
                 MsgType::RodsApiReq,
@@ -594,45 +516,26 @@ where
         Ok(self)
     }
 
-    pub(crate) async fn get_auth_response(mut self) -> Result<(BinBytesBuf, Self), IrodsError> {
-        let (header, challenge, _) = self
-            .inner
+    pub(crate) async fn get_auth_response(mut self) -> Result<BinBytesBuf, IrodsError> {
+        let (_, challenge) = self
             .resources
             .get_header_and_msg::<T, BinBytesBuf>()
             .await?;
 
-        Ok((challenge, self))
-    }
-}
-
-impl<T> UnauthenticatedConnection<T, TlsStream<TcpStream>>
-where
-    T: ProtocolEncoding,
-{
-    pub(crate) async fn send_handshake_header(
-        mut self,
-        config: &SslConfig,
-    ) -> Result<Self, IrodsError> {
-        self.inner
-            .resources
-            .send_handshake_header::<T>(config)
-            .await?;
-
-        Ok(self)
+        Ok(challenge)
     }
 
-    pub(crate) async fn send_shared_secret(mut self, size: usize) -> Result<Self, IrodsError> {
-        self.inner.resources.send_shared_secret::<T>(size).await?;
-        Ok(self)
+    pub fn new(account: Account, resources: ResourceBundle<C>) -> Self {
+        Self {
+            resources,
+            account,
+            phantom_protocol: PhantomData,
+        }
     }
-}
 
-pub struct Connection<T, C>
-where
-    T: ProtocolEncoding,
-    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
-{
-    pub inner: Box<ConnectionInner<T, C>>,
+    pub(crate) async fn into_connection(self, signature: Vec<u8>) -> Connection<T, C> {
+        Connection::new(self.account, self.resources, signature)
+    }
 }
 
 impl<T, C> Connection<T, C>
@@ -642,17 +545,15 @@ where
 {
     pub fn new(account: Account, resources: ResourceBundle<C>, signature: Vec<u8>) -> Self {
         Self {
-            inner: Box::new(ConnectionInner {
-                resources,
-                account,
-                signature,
-                phantom_protocol: PhantomData,
-            }),
+            resources,
+            account,
+            signature,
+            phantom_protocol: PhantomData,
         }
     }
 }
 
-pub struct ConnectionInner<T, C>
+pub struct Connection<T, C>
 where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
