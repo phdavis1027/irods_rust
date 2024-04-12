@@ -95,4 +95,5 @@ pub enum APN {
     DataObjClose = 673,
     DataObjLSeek = 674,
     DataObjRead = 675,
+    ObjStat = 633,
 }
