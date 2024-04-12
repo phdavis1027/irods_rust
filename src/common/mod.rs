@@ -1,4 +1,5 @@
 pub mod cond_input_kw;
+pub mod icat_column;
 
 use rods_prot_msg::error::errors::IrodsError;
 

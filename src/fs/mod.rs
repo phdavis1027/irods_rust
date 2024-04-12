@@ -1,7 +1,9 @@
 pub mod close;
+pub mod download;
 pub mod open;
 pub mod read;
 pub mod seek;
+pub mod stat;
 
 /*
 #define S_IRWXU 0000700    /* RWX mask for owner */
