@@ -98,7 +98,11 @@ mod test {
     use crate::{
         bosd::xml::XML,
         connection::{
-            authenticate::NativeAuthenticator, pool::IrodsManager, tcp::TcpConnector, Account,
+            authenticate::NativeAuthenticator,
+            pool::IrodsManager,
+            ssl::{SslConfig, SslConnector},
+            tcp::TcpConnector,
+            Account,
         },
     };
 
@@ -107,11 +111,13 @@ mod test {
     #[tokio::test]
     async fn test_open_close_sync() {
         let account = Account::test_account();
-
+        let ssl_config = SslConfig::test_config();
         let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(172, 18, 0, 3), 1247));
-        let connector = TcpConnector::new(addr);
+
+        let connector = SslConnector::new(addr, ssl_config);
         let authenticator = NativeAuthenticator::new(30, "rods".into());
-        let manager: IrodsManager<XML, TcpConnector, NativeAuthenticator> =
+
+        let manager: IrodsManager<XML, SslConnector, NativeAuthenticator> =
             IrodsManager::new(account, connector, authenticator, 10, 10);
 
         let pool: managed::Pool<IrodsManager<_, _, _>> = managed::Pool::builder(manager)
@@ -124,11 +130,10 @@ mod test {
         println!("Successfuly got connection.");
 
         let path = "/tempZone/home/rods/test.txt";
-        let handle = conn
+        let (handle, _) = conn
             .open_request(&Path::new(path))
             .set_flag(OpenFlag::ReadOnly)
             .execute()
-            .and_then(|(handle, _)| async move { Ok(handle) })
             .await
             .unwrap();
 

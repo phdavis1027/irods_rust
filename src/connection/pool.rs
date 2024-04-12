@@ -47,7 +47,6 @@ where
     }
 }
 
-#[async_trait]
 impl<T, C, A> Manager for IrodsManager<T, C, A>
 where
     T: ProtocolEncoding + Send + Sync,
@@ -70,14 +69,6 @@ where
         conn: &mut Self::Type,
         metrics: &deadpool::managed::Metrics,
     ) -> RecycleResult<Self::Error> {
-        if metrics.recycle_count >= self.num_recycles_before_refresh {
-            return Err(RecycleError::StaticMessage("Recycles limit reached"));
-        }
-
-        if metrics.created.elapsed() >= self.num_secs_before_refresh {
-            return Err(RecycleError::StaticMessage("Time limit reached"));
-        }
-
         Ok(())
     }
 }

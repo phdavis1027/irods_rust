@@ -9,7 +9,7 @@ use std::marker::PhantomData;
 
 use base64::Engine;
 use futures::future::TryFutureExt;
-use native_tls::{Certificate, TlsConnector};
+use native_tls::{Certificate, HandshakeError, TlsConnector};
 use rand::RngCore;
 use rods_prot_msg::error::errors::IrodsError;
 use std::io::Cursor;
@@ -116,15 +116,42 @@ impl<S> ResourceBundle<S>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+    pub(self) async fn send_handshake_header<T>(
+        &mut self,
+        config: &SslConfig,
+    ) -> Result<(), IrodsError>
+    where
+        T: ProtocolEncoding,
+    {
+        let header = HandshakeHeader::new(
+            config.algorithm.to_string(),
+            config.key_size,
+            config.salt_size,
+            config.hash_rounds,
+        );
+
+        let header_len = T::encode(&header, &mut self.inner.header_buf)?;
+
+        Self::send_header_len(&mut self.inner, header_len)
+            .and_then(|this| Self::send_from_header_buf(this, header_len))
+            .await?;
+
+        Ok(())
+    }
+
     pub(self) async fn send_shared_secret<T>(&mut self, size: usize) -> Result<(), IrodsError>
     where
         T: ProtocolEncoding,
     {
-        let mut shared_secret = &mut self.inner.msg_buf[..size];
+        let shared_secret = &mut self.inner.bytes_buf[..size];
         rand::thread_rng().fill_bytes(shared_secret);
 
-        self.send_msg::<T, SharedSecretHeader>(SharedSecretHeader { size })
-            .and_then(|mut this| Self::send_from_msg_buf(&mut this.inner, size))
+        let header = SharedSecretHeader { size };
+        let header_len = T::encode(&header, &mut self.inner.header_buf)?;
+
+        Self::send_header_len(&mut self.inner, header_len)
+            .and_then(|this| Self::send_from_header_buf(this, header_len))
+            .and_then(|this| Self::send_from_bytes_buf(this, size))
             .await?;
 
         Ok(())
@@ -143,6 +170,17 @@ where
                 connector: transport,
             }),
         }
+    }
+
+    async fn send_from_bytes_buf(
+        inner: &mut ResourceBundleInner<S>,
+        len: usize,
+    ) -> Result<&mut ResourceBundleInner<S>, IrodsError> {
+        inner
+            .connector
+            .write_all(&mut inner.bytes_buf[..len])
+            .await?;
+        Ok(inner)
     }
 
     async fn send_header_len(
@@ -248,6 +286,7 @@ where
                 let header_len =
                     u32::from_be_bytes(inner.header_buf[..4].try_into().unwrap()) as usize;
 
+                println!("Header length: {}", header_len);
                 let inner = Self::read_to_header_buf(inner, header_len).await?;
 
                 Ok(T::decode(&inner.header_buf[..header_len])?)
@@ -289,6 +328,8 @@ where
             .and_then(|inner| Self::send_from_header_buf(inner, len))
             .await?;
 
+        println!("Sent header: {:?}", header);
+
         Ok(self)
     }
 
@@ -315,7 +356,7 @@ where
     {
         let (header, _) = self.read_standard_header::<T>().await?;
 
-        let (msg, this) = self.read_msg::<T, M>(header.msg_len as usize).await?;
+        let (msg, _) = self.read_msg::<T, M>(header.msg_len as usize).await?;
 
         Ok((header, msg, self))
     }
@@ -574,19 +615,14 @@ where
     ) -> Result<Self, IrodsError> {
         self.inner
             .resources
-            .send_msg::<T, _>(HandshakeHeader::new(
-                config.algorithm.clone(),
-                config.key_size,
-                config.salt_size,
-                config.hash_rounds,
-            ))
+            .send_handshake_header::<T>(config)
             .await?;
+
         Ok(self)
     }
 
     pub(crate) async fn send_shared_secret(mut self, size: usize) -> Result<Self, IrodsError> {
         self.inner.resources.send_shared_secret::<T>(size).await?;
-
         Ok(self)
     }
 }
