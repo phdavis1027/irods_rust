@@ -1,3 +1,4 @@
+#[derive(Copy, Clone, Debug)]
 pub enum IcatColumn {
     UserId = 201,
     UserName = 202,

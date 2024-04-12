@@ -26,7 +26,7 @@ pub mod stat;
 #define S_ISVTX 0001000    /* save swapped text even after use */
 */
 
-#[cfg_attr(test, derive(Debug))]
+#[derive(Clone, Copy, Debug)]
 pub enum CreateMode {
     OwnerRead = 0o400,
     OwnerWrite = 0o200,

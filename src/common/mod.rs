@@ -78,6 +78,17 @@ impl TryFrom<&str> for CsNegResult {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum ObjectType {
+    UnknownObj = 0,
+    DataObj = 1,
+    Coll = 2,
+    UnknownFile = 3,
+    LocalFile = 4,
+    LocalDir = 5,
+    NoInput = 6,
+}
+
 pub enum APN {
     Authentication = 110000,
     DataObjOpen = 602,
