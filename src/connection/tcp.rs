@@ -1,10 +1,11 @@
 use crate::bosd::ProtocolEncoding;
-use futures::TryFutureExt;
 use rods_prot_msg::error::errors::IrodsError;
 use std::net::SocketAddr;
 use tokio::net::TcpStream as AsyncTcpStream;
 
-use super::{connect::Connect, Account, Connection, ResourceBundle, UnauthenticatedConnection};
+use super::{
+    connect::Connect, Account, ResourceBundle, UnauthenticatedConnection, UninitializedConnection,
+};
 
 #[derive(Clone)]
 pub struct TcpConnector {
@@ -26,11 +27,11 @@ where
     async fn connect(
         &self,
         account: Account,
-    ) -> Result<super::UnauthenticatedConnection<T, Self::Transport>, IrodsError> {
+    ) -> Result<UnauthenticatedConnection<T, Self::Transport>, IrodsError> {
         let tcp_resources = ResourceBundle::new(AsyncTcpStream::connect(self.addr).await?);
 
-        let conn: UnauthenticatedConnection<T, AsyncTcpStream> =
-            UnauthenticatedConnection::new(account.clone(), tcp_resources);
+        let mut conn: UninitializedConnection<T, AsyncTcpStream> =
+            UninitializedConnection::new(account.clone(), tcp_resources);
 
         conn.send_startup_pack(
             0,
@@ -42,7 +43,10 @@ where
             (4, 3, 2),
             "rust".to_string(),
         )
-        .and_then(|conn| conn.get_version())
-        .await
+        .await?;
+
+        conn.get_version().await?;
+
+        Ok(conn.into_unauthenticated())
     }
 }

@@ -19,17 +19,17 @@ where
         OpenedDataObjInp::new(handle, 0, Whence::SeekSet, OprType::No, 0, 0)
     }
 
-    pub async fn close(&mut self, handle: DataObjectHandle) -> Result<&mut Self, IrodsError> {
-        self.inner
-            .resources
+    pub async fn close(&mut self, handle: DataObjectHandle) -> Result<(), IrodsError> {
+        self.resources
             .send_header_then_msg::<T, _>(
                 &Self::make_close_opened_data_obj_inp(handle),
                 MsgType::RodsApiReq,
                 APN::DataObjClose as i32,
             )
-            .and_then(|resc| resc.read_standard_header::<T>())
             .await?;
 
-        Ok(self)
+        self.resources.read_standard_header::<T>().await?;
+
+        Ok(())
     }
 }

@@ -37,22 +37,17 @@ where
         path: &Path,
         flags: i32,
         resc: Option<&str>,
-    ) -> Result<(DataObjectHandle, &mut Self), IrodsError> {
-        let handle = self
-            .inner
-            .resources
+    ) -> Result<DataObjectHandle, IrodsError> {
+        self.resources
             .send_header_then_msg::<T, _>(
                 &Self::make_open_data_obj_inp(path, flags, resc),
                 MsgType::RodsApiReq,
                 APN::DataObjOpen as i32,
             )
-            .and_then(|resc| async move {
-                let (header, _) = resc.read_standard_header::<T>().await?;
-                Ok(header.int_info)
-            })
             .await?;
+        let header = self.resources.read_standard_header::<T>().await?;
 
-        Ok((handle, self))
+        Ok(header.int_info)
     }
 }
 
@@ -96,9 +91,7 @@ where
         self
     }
 
-    pub async fn execute(
-        self,
-    ) -> Result<(DataObjectHandle, &'conn mut Connection<T, C>), IrodsError> {
+    pub async fn execute(self) -> Result<DataObjectHandle, IrodsError> {
         self.conn.open_inner(self.path, self.flags, self.resc).await
     }
 }

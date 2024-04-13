@@ -322,19 +322,14 @@ where
 
         Ok(self)
     }
-}
 
-impl<T> UninitializedConnection<T, TlsStream<TcpStream>>
-where
-    T: ProtocolEncoding,
-{
     pub(crate) async fn get_server_cs_neg(
-        mut self,
+        &mut self,
     ) -> Result<(StandardHeader, ServerCsNeg), IrodsError> {
         self.resources.get_header_and_msg::<T, _>().await
     }
 
-    pub(crate) async fn send_use_ssl(mut self) -> Result<Self, IrodsError> {
+    pub(crate) async fn send_use_ssl(&mut self) -> Result<(), IrodsError> {
         self.resources
             .send_header_then_msg::<T, _>(
                 &ClientCsNeg::new(1, CsNegResult::CS_NEG_USE_SSL),
@@ -343,10 +338,15 @@ where
             )
             .await?;
 
-        Ok(self)
+        Ok(())
     }
+}
 
-    pub(crate) async fn send_shared_secret(mut self, size: usize) -> Result<(), IrodsError> {
+impl<T> UninitializedConnection<T, tokio_native_tls::TlsStream<TcpStream>>
+where
+    T: ProtocolEncoding,
+{
+    pub(crate) async fn send_shared_secret(&mut self, size: usize) -> Result<(), IrodsError> {
         self.resources.send_shared_secret::<T>(size).await?;
 
         Ok(())
@@ -381,7 +381,7 @@ where
     }
 
     pub(crate) async fn send_startup_pack(
-        mut self,
+        &mut self,
         reconnect_flag: u32,
         connect_cnt: u32,
         proxy_user: String,
@@ -412,7 +412,7 @@ where
         Ok(())
     }
 
-    pub(crate) async fn send_negotiation_failed(mut self) -> Result<Self, IrodsError> {
+    pub(crate) async fn send_negotiation_failed(&mut self) -> Result<(), IrodsError> {
         self.resources
             .send_header_then_msg::<T, _>(
                 &ClientCsNeg::new(0, CsNegResult::CS_NEG_FAILURE),
@@ -421,17 +421,17 @@ where
             )
             .await?;
 
-        Ok(self)
+        Ok(())
     }
 
-    pub(crate) async fn get_version(mut self) -> Result<(), IrodsError> {
+    pub(crate) async fn get_version(&mut self) -> Result<(), IrodsError> {
         let (header, version) = self.resources.get_header_and_msg::<T, Version>().await?;
         // TODO: Check version
         Ok(())
     }
 
     pub(crate) async fn send_handshake_header(
-        mut self,
+        &mut self,
         config: &SslConfig,
     ) -> Result<(), IrodsError> {
         self.resources.send_handshake_header::<T>(config).await?;
@@ -468,9 +468,9 @@ where
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     pub(crate) async fn send_auth_request(
-        mut self,
+        &mut self,
         authenticator: &NativeAuthenticator,
-    ) -> Result<Self, IrodsError> {
+    ) -> Result<(), IrodsError> {
         // BytesBuf = unencoded buf
         // ErrorBuf = encoded buf
         let mut unencoded_cursor = Cursor::new(&mut self.resources.bytes_buf);
@@ -513,10 +513,10 @@ where
             )
             .await?;
 
-        Ok(self)
+        Ok(())
     }
 
-    pub(crate) async fn get_auth_response(mut self) -> Result<BinBytesBuf, IrodsError> {
+    pub(crate) async fn get_auth_response(&mut self) -> Result<BinBytesBuf, IrodsError> {
         let (_, challenge) = self
             .resources
             .get_header_and_msg::<T, BinBytesBuf>()
@@ -533,7 +533,7 @@ where
         }
     }
 
-    pub(crate) async fn into_connection(self, signature: Vec<u8>) -> Connection<T, C> {
+    pub(crate) fn into_connection(self, signature: Vec<u8>) -> Connection<T, C> {
         Connection::new(self.account, self.resources, signature)
     }
 }

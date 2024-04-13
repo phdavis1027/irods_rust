@@ -22,15 +22,17 @@ where
     }
 
     pub async fn stat(&mut self, path: &Path) -> Result<RodsObjStat, IrodsError> {
-        let (_, stat, _) = self
-            .inner
-            .resources
+        self.resources
             .send_header_then_msg::<T, _>(
                 &Self::make_stat_data_obj_in(path),
                 MsgType::RodsApiReq,
                 APN::ObjStat as i32,
             )
-            .and_then(|resc| resc.get_header_and_msg::<T, RodsObjStat>())
+            .await?;
+
+        let (_, stat) = self
+            .resources
+            .get_header_and_msg::<T, RodsObjStat>()
             .await?;
 
         Ok(stat)

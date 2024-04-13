@@ -28,17 +28,19 @@ where
         handle: DataObjectHandle,
         whence: Whence,
         offset: usize,
-    ) -> Result<&mut Self, IrodsError> {
-        self.inner
-            .resources
+    ) -> Result<(), IrodsError> {
+        self.resources
             .send_header_then_msg::<T, _>(
                 &Self::make_seek_opened_data_obj_inp(handle, whence, offset),
                 MsgType::RodsApiReq,
                 APN::DataObjLSeek as i32,
             )
-            .and_then(|resc| resc.get_header_and_msg::<T, FileLseekOut>())
+            .await?;
+        let _ = self
+            .resources
+            .get_header_and_msg::<T, FileLseekOut>()
             .await?;
 
-        Ok(self)
+        Ok(())
     }
 }

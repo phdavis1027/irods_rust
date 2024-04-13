@@ -112,7 +112,6 @@ mod test {
     }
 
     #[tokio::test]
-    #[ignore]
     async fn test_tcp() {
         let account = Account::test_account();
 

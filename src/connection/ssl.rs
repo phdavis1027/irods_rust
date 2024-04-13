@@ -21,7 +21,7 @@ use crate::{
     common::{CsNegPolicy, CsNegResult},
 };
 
-use super::{connect::Connect, ResourceBundle, UnauthenticatedConnection};
+use super::{connect::Connect, ResourceBundle, UnauthenticatedConnection, UninitializedConnection};
 
 pub struct SslConnector {
     inner: Arc<SslConnectorInner>,
@@ -103,27 +103,23 @@ where
     ) -> Result<UnauthenticatedConnection<T, Self::Transport>, IrodsError> {
         let tcp_resources = ResourceBundle::new(AsyncTcpStream::connect(self.inner.addr).await?);
 
-        let mut conn: UnauthenticatedConnection<T, AsyncTcpStream> =
-            UnauthenticatedConnection::new(account.clone(), tcp_resources);
+        let mut conn: UninitializedConnection<T, AsyncTcpStream> =
+            UninitializedConnection::new(account.clone(), tcp_resources);
 
-        let mut conn = conn
-            .send_startup_pack(
-                0,
-                0,
-                account.proxy_user.clone(),
-                account.proxy_zone.clone(),
-                account.client_user.clone(),
-                account.client_zone.clone(),
-                (4, 3, 2),
-                "rust;request_server_negotiation".to_string(),
-            )
-            .and_then(|conn| conn.get_server_cs_neg())
-            .and_then(|(header, cs_neg, conn)| {
-                // TODO: Check the cs_neg
-                conn.send_use_ssl()
-            })
-            .and_then(|conn| conn.get_version())
-            .await?;
+        conn.send_startup_pack(
+            0,
+            0,
+            account.proxy_user.clone(),
+            account.proxy_zone.clone(),
+            account.client_user.clone(),
+            account.client_zone.clone(),
+            (4, 3, 2),
+            "rust;request_server_negotiation".to_string(),
+        )
+        .await?;
+        conn.get_server_cs_neg().await?;
+        conn.send_use_ssl().await?;
+        conn.get_version().await?;
 
         let cert = conn.create_cert(&self.inner.config).await?;
 
@@ -133,9 +129,12 @@ where
             .build()
             .unwrap();
 
-        conn.into_tls(blocking_connector, &self.inner.config.domain)
-            .and_then(|conn| conn.send_handshake_header(&self.inner.config))
-            .and_then(|conn| conn.send_shared_secret(self.inner.config.key_size))
-            .await
+        let mut conn = conn
+            .into_tls(blocking_connector, &self.inner.config.domain)
+            .await?;
+        conn.send_handshake_header(&self.inner.config).await?;
+        conn.send_shared_secret(self.inner.config.key_size).await?;
+
+        Ok(conn.into_unauthenticated())
     }
 }

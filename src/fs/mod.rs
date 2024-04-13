@@ -111,37 +111,29 @@ mod test {
     use super::*;
 
     #[tokio::test]
-    async fn test_open_close_sync() {
+    async fn test_open_seek_close() {
         let account = Account::test_account();
-        let ssl_config = SslConfig::test_config();
+
         let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(172, 18, 0, 3), 1247));
-
-        let connector = SslConnector::new(addr, ssl_config);
+        let connector = TcpConnector::new(addr);
         let authenticator = NativeAuthenticator::new(30, "rods".into());
-
-        let manager: IrodsManager<XML, SslConnector, NativeAuthenticator> =
+        let manager: IrodsManager<XML, TcpConnector, NativeAuthenticator> =
             IrodsManager::new(account, connector, authenticator, 10, 10);
 
         let pool: managed::Pool<IrodsManager<_, _, _>> = managed::Pool::builder(manager)
             .max_size(16)
             .build()
             .unwrap();
-
         let mut conn = pool.get().await.unwrap();
 
         println!("Successfuly got connection.");
 
         let path = "/tempZone/home/rods/test.txt";
-        let (handle, _) = conn
-            .open_request(&Path::new(path))
-            .set_flag(OpenFlag::ReadOnly)
-            .execute()
-            .await
-            .unwrap();
 
-        conn.seek(handle, Whence::SeekSet, 10)
-            .and_then(|conn| conn.close(handle))
-            .await
-            .unwrap();
+        let handle = conn.open_request(&Path::new(path)).execute().await.unwrap();
+
+        conn.seek(handle, Whence::SeekSet, 10).await.unwrap();
+
+        conn.close(handle).await.unwrap();
     }
 }
