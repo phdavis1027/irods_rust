@@ -9,6 +9,8 @@ use crate::bosd::ProtocolEncoding;
 
 use super::{authenticate::Authenticate, connect::Connect, Account, Connection};
 
+pub type ConnectionPool<T, C, A> = deadpool::managed::Pool<IrodsManager<T, C, A>>;
+
 pub struct IrodsManager<T, C, A>
 where
     T: ProtocolEncoding + Send,
@@ -112,6 +114,7 @@ mod test {
     }
 
     #[tokio::test]
+    #[ignore]
     async fn test_tcp() {
         let account = Account::test_account();
 

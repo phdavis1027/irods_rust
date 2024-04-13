@@ -67,7 +67,7 @@ impl XMLDeserializable for RodsObjStat {
                 (State::Tag, Event::Start(e)) if e.name().as_ref() == b"RodsObjStat_PI" => {
                     State::Size
                 }
-                (State::Tag, Event::Start(e)) if e.name().as_ref() == b"objSize" => {
+                (State::Size, Event::Start(e)) if e.name().as_ref() == b"objSize" => {
                     State::SizeInner
                 }
                 (State::SizeInner, Event::Text(e)) => {
@@ -75,6 +75,7 @@ impl XMLDeserializable for RodsObjStat {
                     State::ObjectType
                 }
                 (State::ObjectType, Event::Start(e)) if e.name().as_ref() == b"objType" => {
+                    dbg!(&e);
                     State::ObjectTypeInner
                 }
                 (State::ObjectTypeInner, Event::Text(e)) => {
@@ -103,14 +104,16 @@ impl XMLDeserializable for RodsObjStat {
                     State::Checksum
                 }
                 (State::Checksum, Event::Empty(e)) if e.name().as_ref() == b"chksum" => {
-                    checksum = None;
                     State::OwnerName
                 }
                 (State::Checksum, Event::Start(e)) if e.name().as_ref() == b"chksum" => {
                     State::ChecksumInner
                 }
                 (State::ChecksumInner, Event::Text(e)) => {
-                    checksum = Some(e.unescape()?.parse()?);
+                    match e.unescape()?.parse() {
+                        Ok(v) => checksum = Some(v),
+                        Err(_) => checksum = None,
+                    };
                     State::OwnerName
                 }
                 (State::OwnerName, Event::Start(e)) if e.name().as_ref() == b"ownerName" => {

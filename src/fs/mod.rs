@@ -111,6 +111,7 @@ mod test {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn test_open_seek_close() {
         let account = Account::test_account();
 

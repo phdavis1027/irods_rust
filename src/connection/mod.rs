@@ -169,7 +169,7 @@ where
         Ok(())
     }
 
-    async fn read_to_bytes_buf(&mut self, len: usize) -> Result<(), IrodsError> {
+    pub(crate) async fn read_to_bytes_buf(&mut self, len: usize) -> Result<(), IrodsError> {
         tokio::io::copy(
             &mut (&mut self.transport).take(len as u64),
             &mut Cursor::new(&mut self.bytes_buf),
