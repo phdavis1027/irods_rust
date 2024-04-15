@@ -5,17 +5,14 @@ edition = "2021"
 
 [dependencies]
 arbitrary = { version = "1.3.2", optional = true, features = ["derive"] }
-async-trait = "0.1.79"
 base64 = "0.22.0"
-deadpool = { version = "0.11.2", features = ["rt_tokio_1", "managed"]}
+deadpool = { version = "0.11.2", features = ["managed"]}
 futures = "0.3.30"
-lazy_static = "1.4.0"
 md-5 = "0.10.6"
-moro = "0.4.0"
 native-tls = "0.2.11"
 quick-xml = { version = "0.31.0", features = [ ]}
 rand = "0.8.5"
-rods_prot_msg = { path = "../rods_prot_msg/" }
+rods_prot_msg = { path = "../../rods_prot_msg/" }
 serde = "1.0.197"
 serde_derive = "1.0.197"
 serde_json = "1.0.114"
@@ -24,3 +21,4 @@ tokio-native-tls = "0.3.1"
 
 [features]
 arbitrary = [ "dep:arbitrary" ]
+exec_rule = []

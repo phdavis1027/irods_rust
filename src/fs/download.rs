@@ -146,34 +146,28 @@ where
         task: usize,
         len: usize,
     ) -> Result<(), IrodsError> {
-        println!("Downloading task {} of size {}", task, len);
-        println!("Opening local file for writing at path: {:?}", local_path);
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .open(local_path)
             .await?;
 
-        println!("Opening data object for reading");
         let handle = self.open_request(remote_path).execute().await?;
 
-        let mut offset = task * len;
+        let offset = task * len;
 
-        println!("Seeked to offset {}", offset);
         if offset > 0 {
             self.seek(handle, super::Whence::SeekSet, offset).await?;
         }
+
         let mut buf = Vec::with_capacity(len);
-        println!("Reading data object into buffer");
+        // self.read_data_obj_into_bytes_buf(handle, len).await?;
         self.read_data_obj_into(handle, &mut buf).await?;
 
         let file = file.into_std().await;
-        tokio::task::spawn_blocking(move || {
-            println!("Writing to file at offset {}", offset);
-            file.write_all_at(&buf, offset as u64)
-        })
-        .await
-        .map_err(|_| IrodsError::Other("Failed to write to file".to_string()))?;
+        tokio::task::spawn_blocking(move || file.write_all_at(&buf, offset as u64))
+            .await
+            .map_err(|_| IrodsError::Other("Failed to write to file".to_string()))?;
 
         Ok(())
     }
@@ -209,7 +203,7 @@ mod test {
 
         ParallelDownloadContext::new(
             &mut pool,
-            10,
+            29,
             &Path::new("/tempZone/home/rods/totc.txt"),
             &Path::new("./totc.txt"),
         )

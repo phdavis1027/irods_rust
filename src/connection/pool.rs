@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use async_trait::async_trait;
 use deadpool::managed::{Manager, RecycleError, RecycleResult};
 use futures::TryFutureExt;
 use rods_prot_msg::error::errors::IrodsError;

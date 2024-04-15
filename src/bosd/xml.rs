@@ -27,17 +27,17 @@ macro_rules! tag_fmt {
 
 pub struct XML;
 
-pub(crate) trait XMLDeserializable {
+pub trait XMLDeserializable {
     fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
     where
         Self: Sized;
 }
 
-pub(crate) trait XMLSerializable {
+pub trait XMLSerializable {
     fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError>;
 }
 
-pub(crate) trait XMLSerializableChild {
+pub trait XMLSerializableChild {
     fn to_nested_xml<'r, 't1, 't2>(
         &self,
         writer: &'r mut Writer<&'t1 mut Cursor<&'t2 mut Vec<u8>>>,
