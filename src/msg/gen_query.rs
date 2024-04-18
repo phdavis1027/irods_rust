@@ -167,7 +167,7 @@ pub struct GenQueryOut {
 
 impl Deserializable for GenQueryOut {}
 impl XMLDeserializable for GenQueryOut {
-    fn from_xml(xml: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+    fn from_xml(xml: &[u8]) -> Result<Self, crate::error::errors::IrodsError>
     where
         Self: Sized,
     {

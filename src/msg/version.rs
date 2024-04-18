@@ -3,7 +3,7 @@
 use std::num::ParseIntError;
 
 use quick_xml::events::Event;
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
@@ -85,7 +85,7 @@ impl XMLDeserializable for Version {
                 }
                 (State::Tag, Event::Start(e)) => {
                     return Err(
-                        rods_prot_msg::error::errors::IrodsError::UnexpectedResponse(
+                        crate::error::errors::IrodsError::UnexpectedResponse(
                             // FIXME: This is excessive
                             std::str::from_utf8(e.name().as_ref()).unwrap().into(),
                         ),

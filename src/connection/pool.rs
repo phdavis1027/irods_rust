@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use deadpool::managed::{Manager, RecycleError, RecycleResult};
 use futures::TryFutureExt;
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use crate::bosd::ProtocolEncoding;
 

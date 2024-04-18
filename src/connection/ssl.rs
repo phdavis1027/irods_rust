@@ -8,7 +8,7 @@ use std::{
 
 use futures::TryFutureExt;
 use native_tls::TlsConnector;
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::{
     fs::File,

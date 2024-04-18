@@ -5,6 +5,8 @@ pub mod error;
 pub mod fs;
 pub mod msg;
 
+extern crate serde;
+
 #[cfg(feature = "exec_rule")]
 pub mod exec_rule;
 

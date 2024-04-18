@@ -47,7 +47,7 @@ impl XMLSerializable for DataObjInp {
     fn to_xml(
         &self,
         sink: &mut Vec<u8>,
-    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
+    ) -> Result<usize, crate::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = quick_xml::Writer::new(&mut cursor);
 

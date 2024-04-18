@@ -1,7 +1,7 @@
 pub mod cond_input_kw;
 pub mod icat_column;
 
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum IrodsProt {

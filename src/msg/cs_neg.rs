@@ -1,5 +1,5 @@
 use quick_xml::events::{BytesEnd, BytesStart, Event};
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 use std::io::{Cursor, Read, Write};
 
 use crate::{
@@ -25,7 +25,7 @@ impl ServerCsNeg {
 
 impl Deserializable for ServerCsNeg {}
 impl XMLDeserializable for ServerCsNeg {
-    fn from_xml(xml: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+    fn from_xml(xml: &[u8]) -> Result<Self, crate::error::errors::IrodsError>
     where
         Self: Sized,
     {
@@ -94,7 +94,7 @@ impl XMLSerializable for ClientCsNeg {
     fn to_xml(
         &self,
         sink: &mut Vec<u8>,
-    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
+    ) -> Result<usize, crate::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = quick_xml::Writer::new(&mut cursor);
 

@@ -41,7 +41,7 @@ impl XMLDeserializable for ExecRuleOut {
         loop {
             state = match (state, reader.read_event()?) {
                 (_, Event::Eof) => {
-                    return Err(rods_prot_msg::error::errors::IrodsError::Other(
+                    return Err(crate::error::errors::IrodsError::Other(
                         "Unexpected EOF".to_string(),
                     ))
                 }

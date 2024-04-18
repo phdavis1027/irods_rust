@@ -2,7 +2,7 @@ use std::{os::unix::fs::FileExt, path::Path};
 
 use deadpool::managed::{self, Object};
 use futures::{stream::FuturesUnordered, StreamExt};
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 use tokio::fs::OpenOptions;
 
 use crate::{

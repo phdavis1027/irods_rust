@@ -1,4 +1,4 @@
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use crate::bosd::ProtocolEncoding;
 

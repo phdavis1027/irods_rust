@@ -6,7 +6,7 @@ use quick_xml::events::BytesStart;
 use quick_xml::events::BytesText;
 use quick_xml::events::Event;
 use quick_xml::Writer;
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use std::io::Write;
 

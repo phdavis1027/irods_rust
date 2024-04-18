@@ -1,5 +1,5 @@
 use crate::bosd::ProtocolEncoding;
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 use std::net::SocketAddr;
 use tokio::net::TcpStream as AsyncTcpStream;
 

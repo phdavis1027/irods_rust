@@ -11,7 +11,7 @@ use base64::Engine;
 use futures::future::TryFutureExt;
 use native_tls::{Certificate, HandshakeError, TlsConnector};
 use rand::RngCore;
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 use std::io::Cursor;
 use tokio::fs::File;
 use tokio_native_tls::TlsStream;

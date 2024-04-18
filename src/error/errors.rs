@@ -1,21 +1,11 @@
 use base64::DecodeError;
-use irods_xml;
 use native_tls::HandshakeError;
 use std::{convert::Infallible, net::TcpStream, num::ParseIntError, str::Utf8Error};
 
-use crate::error::system_error::SystemError;
-
-use crate::types::Msg;
-use derive_more::Display;
 use thiserror::Error;
 
 #[derive(thiserror::Error, Debug)]
 pub enum IrodsError {
-    #[error("system error: [{source}]")]
-    System {
-        #[from]
-        source: SystemError,
-    },
     #[error("user input error: [{source}]")]
     UserInput {
         #[from]
@@ -92,12 +82,6 @@ pub enum IrodsError {
     #[error("unsupported version [{0}]")]
     UnsupportedVersion(u8),
 
-    #[error("deserialization error: [{}]", source)]
-    DeError {
-        #[from]
-        source: irods_xml::DeError,
-    },
-
     #[error("error: invalid utf-8 received from server: [{}]", source)]
     Utf8 {
         #[from]
@@ -138,24 +122,6 @@ pub enum IrodsError {
     Base64DecodeError {
         #[source]
         source: DecodeError,
-    },
-
-    #[error("error while interacting with retrieved connection: [{source}]")]
-    InteractError {
-        #[source]
-        source: deadpool_sync::InteractError,
-    },
-
-    #[error("[{source}]")]
-    SerializationOrDeserializationError {
-        #[source]
-        source: irods_xml::Error,
-    },
-
-    #[error("[{source}]")]
-    GoAway {
-        #[source]
-        source: quick_xml::Error,
     },
 
     #[error("cached error: [{source}]")]

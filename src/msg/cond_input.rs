@@ -4,7 +4,7 @@ use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use crate::{bosd::xml::XMLSerializableChild, common::cond_input_kw::CondInputKw, tag, tag_fmt};
 

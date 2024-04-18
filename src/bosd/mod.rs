@@ -2,7 +2,7 @@ pub mod xml;
 
 use std::{fmt::Debug, io::Cursor};
 
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use crate::common::IrodsProt;
 

@@ -1,5 +1,5 @@
 use quick_xml::{events::Event, Reader};
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use crate::{
     bosd::{xml::XMLDeserializable, Deserializable},
@@ -21,7 +21,7 @@ pub struct RodsObjStat {
 
 impl Deserializable for RodsObjStat {}
 impl XMLDeserializable for RodsObjStat {
-    fn from_xml(xml: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+    fn from_xml(xml: &[u8]) -> Result<Self, crate::error::errors::IrodsError>
     where
         Self: Sized,
     {

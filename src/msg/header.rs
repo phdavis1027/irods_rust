@@ -2,7 +2,7 @@ use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Reader, Writer,
 };
-use rods_prot_msg::error::errors::IrodsError;
+use crate::error::errors::IrodsError;
 
 use std::io::{Cursor, Write};
 
@@ -213,7 +213,7 @@ impl XMLDeserializable for StandardHeader {
                 }
 
                 (state, Event::Eof) => {
-                    return Err(rods_prot_msg::error::errors::IrodsError::Other(format!(
+                    return Err(crate::error::errors::IrodsError::Other(format!(
                         "{state:?}"
                     )));
                 }

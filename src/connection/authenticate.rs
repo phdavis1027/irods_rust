@@ -1,5 +1,6 @@
 use std::io::{self, Cursor, Read, Write};
 
+use crate::error::errors::IrodsError;
 use base64::engine::GeneralPurposeConfig;
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::{encoded_len, engine::GeneralPurpose};
@@ -7,7 +8,6 @@ use base64::{engine, Engine};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures::TryFutureExt;
 use md5::{Digest, Md5};
-use rods_prot_msg::error::errors::IrodsError;
 use serde::Deserialize;
 use std::borrow::{BorrowMut, Cow};
 
