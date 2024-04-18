@@ -11,6 +11,7 @@ use crate::{
         Deserializable, Serialiazable,
     },
     common::{cond_input_kw::CondInputKw, icat_column::IcatColumn},
+    error::errors::IrodsError,
     tag_fmt,
 };
 
@@ -34,10 +35,7 @@ pub struct GenQueryInp {
 
 impl Serialiazable for GenQueryInp {}
 impl XMLSerializable for GenQueryInp {
-    fn to_xml(
-        &self,
-        sink: &mut Vec<u8>,
-    ) -> Result<usize, rods_prot_msg::error::errors::IrodsError> {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 

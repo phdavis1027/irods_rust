@@ -3,11 +3,14 @@ use std::io::Cursor;
 use quick_xml::events::Event;
 
 use super::ExecRuleOut;
-use crate::bosd::{xml::XMLDeserializable, Deserializable};
+use crate::{
+    bosd::{xml::XMLDeserializable, Deserializable},
+    error::errors::IrodsError,
+};
 
 impl Deserializable for ExecRuleOut {}
 impl XMLDeserializable for ExecRuleOut {
-    fn from_xml(xml: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
+    fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>
     where
         Self: Sized,
     {

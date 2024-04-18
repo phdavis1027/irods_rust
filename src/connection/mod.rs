@@ -551,6 +551,27 @@ where
             phantom_protocol: PhantomData,
         }
     }
+
+    pub async fn send_header_then_msg<M>(
+        &mut self,
+        msg: &M,
+        msg_type: MsgType,
+        int_info: i32,
+    ) -> Result<(), IrodsError>
+    where
+        M: Serialiazable,
+    {
+        self.resources
+            .send_header_then_msg::<T, M>(msg, msg_type, int_info)
+            .await
+    }
+
+    pub async fn get_header_and_msg<M>(&mut self) -> Result<(StandardHeader, M), IrodsError>
+    where
+        M: Deserializable,
+    {
+        self.resources.get_header_and_msg::<T, M>().await
+    }
 }
 
 pub struct Connection<T, C>

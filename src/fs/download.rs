@@ -171,7 +171,8 @@ where
         // must be static. However, we don't want to allocate another buffer.
         // We have exclusive access to `self`, so we know that nobody will use
         // it in the meantime, so we can just take it and give it back after
-        // tokio is done with it.
+        // tokio is done with it. This prevents extra allocations because Vec
+        // doesn't allocate until something is pushed to it.
         let mut buf = std::mem::take(&mut self.resources.bytes_buf);
         let buf = tokio::task::spawn_blocking(move || {
             file.write_all_at(&mut buf, offset as u64)?;

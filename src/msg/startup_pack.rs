@@ -3,10 +3,9 @@ use std::io::{Cursor, Write};
 use crate::{
     bosd::{xml::XMLSerializable, Serialiazable},
     common::IrodsProt,
+    error::errors::IrodsError,
     tag, tag_fmt,
 };
-
-use rods_prot_msg::error::errors::IrodsError;
 
 use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
