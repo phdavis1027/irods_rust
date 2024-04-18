@@ -160,14 +160,28 @@ where
             self.seek(handle, super::Whence::SeekSet, offset).await?;
         }
 
-        let mut buf = Vec::with_capacity(len);
-        // self.read_data_obj_into_bytes_buf(handle, len).await?;
-        self.read_data_obj_into(handle, &mut buf).await?;
+        // let mut buf = Vec::with_capacity(len);
+        self.read_data_obj_into_bytes_buf(handle, len).await?;
 
+        // self.read_data_obj_into(handle, &mut buf).await?;
         let file = file.into_std().await;
-        tokio::task::spawn_blocking(move || file.write_all_at(&buf, offset as u64))
-            .await
-            .map_err(|_| IrodsError::Other("Failed to write to file".to_string()))?;
+
+        // This is a hack to get around the borrow checker
+        // Anything that enters the tokio::task::spawn_blocking closure
+        // must be static. However, we don't want to allocate another buffer.
+        // We have exclusive access to `self`, so we know that nobody will use
+        // it in the meantime, so we can just take it and give it back after
+        // tokio is done with it.
+        let mut buf = std::mem::take(&mut self.resources.bytes_buf);
+        let buf = tokio::task::spawn_blocking(move || {
+            file.write_all_at(&mut buf, offset as u64)?;
+
+            Ok::<_, IrodsError>(buf)
+        })
+        .await
+        .map_err(|_| IrodsError::Other("Failed to write to file".to_string()))??;
+
+        self.resources.bytes_buf = buf;
 
         Ok(())
     }

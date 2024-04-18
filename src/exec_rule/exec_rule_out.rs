@@ -1,18 +1,11 @@
 use std::io::Cursor;
 
-use quick_xml::{events::Event, Writer};
+use quick_xml::events::Event;
 
+use super::ExecRuleOut;
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
-#[derive(Debug)]
-pub struct ExecRuleOut {
-    pub std_out: String,
-    pub std_err: String,
-    pub exit_code: i32,
-}
-
 impl Deserializable for ExecRuleOut {}
-
 impl XMLDeserializable for ExecRuleOut {
     fn from_xml(xml: &[u8]) -> Result<Self, rods_prot_msg::error::errors::IrodsError>
     where
@@ -34,9 +27,9 @@ impl XMLDeserializable for ExecRuleOut {
             ExitCode,
         }
 
-        let mut buf_one = None;
-        let mut buf_two = None;
-        let mut exit_code = None;
+        // let mut buf_one = None;
+        // let mut buf_two = None;
+        // let mut exit_code = None;
 
         let mut state = State::Tag;
 
