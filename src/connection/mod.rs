@@ -7,11 +7,11 @@ pub mod tcp;
 use std::io::Write;
 use std::marker::PhantomData;
 
+use crate::error::errors::IrodsError;
 use base64::Engine;
 use futures::future::TryFutureExt;
 use native_tls::{Certificate, HandshakeError, TlsConnector};
 use rand::RngCore;
-use crate::error::errors::IrodsError;
 use std::io::Cursor;
 use tokio::fs::File;
 use tokio_native_tls::TlsStream;

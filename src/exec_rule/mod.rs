@@ -15,7 +15,7 @@ pub trait Rule {
     type Output: Deserializable;
 
     async fn execute<'c, T, C>(
-        self,
+        &self,
         conn: &'c mut Connection<T, C>,
     ) -> Result<Self::Output, IrodsError>
     where
