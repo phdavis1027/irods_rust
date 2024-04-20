@@ -13,6 +13,6 @@ pub use exec_rule_macro::rule;
 
 pub mod reexports {
     pub use derive_builder;
-    pub use quick_xml;
+    pub use irods_xml;
     pub use tokio;
 }

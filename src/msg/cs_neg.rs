@@ -1,4 +1,4 @@
-use quick_xml::events::{BytesEnd, BytesStart, Event};
+use irods_xml::events::{BytesEnd, BytesStart, Event};
 use crate::error::errors::IrodsError;
 use std::io::{Cursor, Read, Write};
 
@@ -44,7 +44,7 @@ impl XMLDeserializable for ServerCsNeg {
 
         let mut state = State::Tag;
 
-        let mut reader = quick_xml::Reader::from_reader(xml);
+        let mut reader = irods_xml::Reader::from_reader(xml);
         loop {
             state = match (state, reader.read_event()?) {
                 (State::Tag, Event::Start(ref e)) if e.name().as_ref() == b"CS_NEG_PI" => {
@@ -96,7 +96,7 @@ impl XMLSerializable for ClientCsNeg {
         sink: &mut Vec<u8>,
     ) -> Result<usize, crate::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
-        let mut writer = quick_xml::Writer::new(&mut cursor);
+        let mut writer = irods_xml::Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("CS_NEG_PI")))?;
 

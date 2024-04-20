@@ -2,8 +2,8 @@
 
 use std::num::ParseIntError;
 
-use quick_xml::events::Event;
 use crate::error::errors::IrodsError;
+use irods_xml::events::Event;
 
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
@@ -73,7 +73,7 @@ impl XMLDeserializable for Version {
         let mut reconn_addr: Option<String> = None;
         let mut cookie: Option<u16> = None;
 
-        let mut reader = quick_xml::reader::Reader::from_reader(xml);
+        let mut reader = irods_xml::reader::Reader::from_reader(xml);
 
         let mut state = State::Tag;
         // Basically, this is safe because encountering any invalid input will throw the state
@@ -84,12 +84,10 @@ impl XMLDeserializable for Version {
                     State::Status
                 }
                 (State::Tag, Event::Start(e)) => {
-                    return Err(
-                        crate::error::errors::IrodsError::UnexpectedResponse(
-                            // FIXME: This is excessive
-                            std::str::from_utf8(e.name().as_ref()).unwrap().into(),
-                        ),
-                    );
+                    return Err(crate::error::errors::IrodsError::UnexpectedResponse(
+                        // FIXME: This is excessive
+                        std::str::from_utf8(e.name().as_ref()).unwrap().into(),
+                    ));
                 }
 
                 (State::Status, Event::Start(e)) if e.name().as_ref() == b"status" => {
@@ -165,8 +163,8 @@ impl XMLDeserializable for Version {
                         ))?,
                     });
                 }
-                (state, Event::Eof) => {
-                    return Err(quick_xml::Error::UnexpectedEof(format!("{state:?}")).into());
+                (_, Event::Eof) => {
+                    return Err(IrodsError::Other("Unexpected EOF".into()));
                 }
                 state => state.0, // Hurtle the state machine toward either its inevitable demise or the next data
                                   // value

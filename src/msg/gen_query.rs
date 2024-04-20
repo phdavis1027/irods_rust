@@ -1,6 +1,6 @@
 use std::io::{Cursor, Write};
 
-use quick_xml::{
+use irods_xml::{
     events::{BytesEnd, BytesStart, Event},
     Reader, Writer,
 };

@@ -1,4 +1,4 @@
-use quick_xml::{events::Event, Reader};
+use irods_xml::{events::Event, Reader};
 use crate::error::errors::IrodsError;
 
 use crate::{

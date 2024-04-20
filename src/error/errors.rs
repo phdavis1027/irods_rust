@@ -218,8 +218,8 @@ pub fn check_int_info(int_info: i32) -> Result<(), IrodsError> {
 }
 */
 
-impl From<quick_xml::Error> for IrodsError {
-    fn from(value: quick_xml::Error) -> Self {
+impl From<irods_xml::Error> for IrodsError {
+    fn from(value: irods_xml::Error) -> Self {
         Self::Other(format!("{value}"))
     }
 }

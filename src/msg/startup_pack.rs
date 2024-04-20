@@ -7,7 +7,7 @@ use crate::{
     tag, tag_fmt,
 };
 
-use quick_xml::{
+use irods_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };

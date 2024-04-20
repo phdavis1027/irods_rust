@@ -1,4 +1,4 @@
-use quick_xml::{
+use irods_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Reader, Writer,
 };
