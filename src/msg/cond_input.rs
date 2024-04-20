@@ -1,10 +1,11 @@
 use std::io::{Cursor, Write};
 
+use crate::{bosd::xml::irods_escapes, error::errors::IrodsError};
 use irods_xml::{
+    escape::escape_with,
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };
-use crate::error::errors::IrodsError;
 
 use crate::{bosd::xml::XMLSerializableChild, common::cond_input_kw::CondInputKw, tag, tag_fmt};
 
@@ -33,7 +34,7 @@ impl CondInput {
     }
 
     pub fn set_kw(&mut self, kw: CondInputKw) {
-        self.kw_map.push((kw, "".to_string()));
+        self.kw_map.push((kw, String::new()));
     }
 }
 
@@ -51,7 +52,11 @@ impl XMLSerializableChild for CondInput {
         }
 
         for (_, value) in self.kw_map.iter() {
-            tag!(writer, "svalue", &value);
+            tag!(
+                writer,
+                "svalue",
+                escape_with(&value, irods_escapes).as_ref()
+            );
         }
 
         writer.write_event(Event::End(BytesEnd::new("KeyValPair_PI")))?;

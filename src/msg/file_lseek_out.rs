@@ -1,3 +1,4 @@
+use crate::bosd::xml::irods_unescapes;
 use crate::error::errors::IrodsError;
 
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
@@ -38,7 +39,7 @@ impl XMLDeserializable for FileLseekOut {
                 }
                 (State::OffsetInner, irods_xml::events::Event::Text(e)) => {
                     return Ok(Self {
-                        offset: e.unescape()?.parse()?,
+                        offset: e.unescape_with(irods_unescapes)?.parse()?,
                     });
                 }
                 (_, irods_xml::events::Event::Eof) => {

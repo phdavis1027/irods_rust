@@ -1,10 +1,10 @@
 use std::io::{Cursor, Write};
 
+use crate::error::errors::IrodsError;
 use irods_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };
-use crate::error::errors::IrodsError;
 
 use crate::{
     bosd::{xml::XMLSerializableChild, Serialiazable},

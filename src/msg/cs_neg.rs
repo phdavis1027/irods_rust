@@ -1,5 +1,5 @@
+use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
 use irods_xml::events::{BytesEnd, BytesStart, Event};
-use crate::error::errors::IrodsError;
 use std::io::{Cursor, Read, Write};
 
 use crate::{
@@ -54,14 +54,14 @@ impl XMLDeserializable for ServerCsNeg {
                     State::StatusInner
                 }
                 (State::StatusInner, Event::Text(text)) => {
-                    status = Some(text.unescape()?.as_ref().parse()?);
+                    status = Some(text.unescape_with(irods_unescapes)?.as_ref().parse()?);
                     State::Result
                 }
                 (State::Result, Event::Start(ref e)) if e.name().as_ref() == b"result" => {
                     State::ResultInner
                 }
                 (State::ResultInner, Event::Text(text)) => {
-                    result = Some(text.unescape()?.as_ref().try_into()?);
+                    result = Some(text.unescape_with(irods_unescapes)?.as_ref().try_into()?);
 
                     return Ok(Self::new(
                         status.ok_or(IrodsError::Other("status not found".into()))?,
@@ -91,10 +91,7 @@ impl ClientCsNeg {
 
 impl Serialiazable for ClientCsNeg {}
 impl XMLSerializable for ClientCsNeg {
-    fn to_xml(
-        &self,
-        sink: &mut Vec<u8>,
-    ) -> Result<usize, crate::error::errors::IrodsError> {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, crate::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = irods_xml::Writer::new(&mut cursor);
 

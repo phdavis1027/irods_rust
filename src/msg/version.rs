@@ -2,7 +2,7 @@
 
 use std::num::ParseIntError;
 
-use crate::error::errors::IrodsError;
+use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
 use irods_xml::events::Event;
 
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
@@ -94,7 +94,7 @@ impl XMLDeserializable for Version {
                     State::StatusInner
                 }
                 (State::StatusInner, Event::Text(text)) => {
-                    status = Some(text.unescape()?.parse()?);
+                    status = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::RelVersion
                 }
@@ -103,7 +103,7 @@ impl XMLDeserializable for Version {
                     State::RelVersionInner
                 }
                 (State::RelVersionInner, Event::Text(text)) => {
-                    let v: RelVersion = text.unescape()?.as_ref().try_into()?;
+                    let v: RelVersion = text.unescape_with(irods_unescapes)?.as_ref().try_into()?;
                     rel_version = Some(v.0);
 
                     State::ApiVersion
@@ -113,7 +113,7 @@ impl XMLDeserializable for Version {
                     State::ApiVersionInner
                 }
                 (State::ApiVersionInner, Event::Text(text)) => {
-                    api_version = Some(text.unescape()?.to_string());
+                    api_version = Some(text.unescape_with(irods_unescapes)?.to_string());
 
                     State::ReconnPort
                 }
@@ -131,7 +131,7 @@ impl XMLDeserializable for Version {
                     State::ReconnAddrInner
                 }
                 (State::ReconnAddrInner, Event::Text(text)) => {
-                    reconn_addr = Some(text.unescape()?.to_string());
+                    reconn_addr = Some(text.unescape_with(irods_unescapes)?.to_string());
 
                     State::Cookie
                 }
@@ -140,7 +140,7 @@ impl XMLDeserializable for Version {
                     State::CookieInner
                 }
                 (State::CookieInner, Event::Text(text)) => {
-                    cookie = Some(text.unescape()?.parse()?);
+                    cookie = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     return Ok(Self {
                         status: status.ok_or(IrodsError::Other(

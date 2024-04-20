@@ -1,8 +1,8 @@
+use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
 use irods_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Reader, Writer,
 };
-use crate::error::errors::IrodsError;
 
 use std::io::{Cursor, Write};
 
@@ -156,7 +156,7 @@ impl XMLDeserializable for StandardHeader {
                     State::MsgTypeInner
                 }
                 (State::MsgTypeInner, Event::Text(text)) => {
-                    msg_type = Some(text.unescape()?.as_ref().try_into()?);
+                    msg_type = Some(text.unescape_with(irods_unescapes)?.as_ref().try_into()?);
                     State::MsgLen
                 }
 
@@ -164,7 +164,7 @@ impl XMLDeserializable for StandardHeader {
                     State::MsgLenInner
                 }
                 (State::MsgLenInner, Event::Text(text)) => {
-                    msg_len = Some(text.unescape()?.parse()?);
+                    msg_len = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::ErrorLen
                 }
@@ -173,7 +173,7 @@ impl XMLDeserializable for StandardHeader {
                     State::ErrorLenInner
                 }
                 (State::ErrorLenInner, Event::Text(text)) => {
-                    error_len = Some(text.unescape()?.parse()?);
+                    error_len = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::BsLen
                 }
@@ -182,7 +182,7 @@ impl XMLDeserializable for StandardHeader {
                     State::BsLenInner
                 }
                 (State::BsLenInner, Event::Text(text)) => {
-                    bs_len = Some(text.unescape()?.parse()?);
+                    bs_len = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     State::IntInfo
                 }
@@ -191,7 +191,7 @@ impl XMLDeserializable for StandardHeader {
                     State::IntInfoInner
                 }
                 (State::IntInfoInner, Event::Text(text)) => {
-                    int_info = Some(text.unescape()?.parse()?);
+                    int_info = Some(text.unescape_with(irods_unescapes)?.parse()?);
 
                     return Ok(StandardHeader {
                         msg_type: msg_type.ok_or(IrodsError::Other(

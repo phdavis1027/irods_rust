@@ -1,12 +1,13 @@
 use std::borrow::Cow;
 use std::io::Cursor;
 
+use crate::bosd::xml::irods_unescapes;
+use crate::error::errors::IrodsError;
 use irods_xml::events::BytesEnd;
 use irods_xml::events::BytesStart;
 use irods_xml::events::BytesText;
 use irods_xml::events::Event;
 use irods_xml::Writer;
-use crate::error::errors::IrodsError;
 
 use std::io::Write;
 
@@ -80,7 +81,7 @@ impl XMLDeserializable for BinBytesBuf {
                 (State::Buf, Event::Start(ref e)) if e.name().as_ref() == b"buf" => State::BufInner,
                 (State::BufInner, Event::Text(ref e)) => {
                     return Ok(BinBytesBuf {
-                        buf: e.unescape()?.to_string(),
+                        buf: e.unescape_with(irods_unescapes)?.to_string(),
                     });
                 }
                 (state, Event::Eof) => {

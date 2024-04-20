@@ -1,5 +1,6 @@
-use irods_xml::{events::Event, Reader};
+use crate::bosd::xml::irods_unescapes;
 use crate::error::errors::IrodsError;
+use irods_xml::{events::Event, Reader};
 
 use crate::{
     bosd::{xml::XMLDeserializable, Deserializable},
@@ -71,7 +72,7 @@ impl XMLDeserializable for RodsObjStat {
                     State::SizeInner
                 }
                 (State::SizeInner, Event::Text(e)) => {
-                    size = Some(e.unescape()?.parse()?);
+                    size = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::ObjectType
                 }
                 (State::ObjectType, Event::Start(e)) if e.name().as_ref() == b"objType" => {
@@ -79,7 +80,7 @@ impl XMLDeserializable for RodsObjStat {
                     State::ObjectTypeInner
                 }
                 (State::ObjectTypeInner, Event::Text(e)) => {
-                    object_type = Some(match e.unescape()?.parse::<u32>()? {
+                    object_type = Some(match e.unescape_with(irods_unescapes)?.parse::<u32>()? {
                         0 => ObjectType::UnknownObj,
                         1 => ObjectType::DataObj,
                         2 => ObjectType::Coll,
@@ -95,12 +96,12 @@ impl XMLDeserializable for RodsObjStat {
                     State::ModeInner
                 }
                 (State::ModeInner, Event::Text(e)) => {
-                    mode = Some(e.unescape()?.parse()?);
+                    mode = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::Id
                 }
                 (State::Id, Event::Start(e)) if e.name().as_ref() == b"dataId" => State::IdInner,
                 (State::IdInner, Event::Text(e)) => {
-                    id = Some(e.unescape()?.parse()?);
+                    id = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::Checksum
                 }
                 (State::Checksum, Event::Empty(e)) if e.name().as_ref() == b"chksum" => {
@@ -110,7 +111,7 @@ impl XMLDeserializable for RodsObjStat {
                     State::ChecksumInner
                 }
                 (State::ChecksumInner, Event::Text(e)) => {
-                    match e.unescape()?.parse() {
+                    match e.unescape_with(irods_unescapes)?.parse() {
                         Ok(v) => checksum = Some(v),
                         Err(_) => checksum = None,
                     };
@@ -120,28 +121,28 @@ impl XMLDeserializable for RodsObjStat {
                     State::OwnerNameInner
                 }
                 (State::OwnerNameInner, Event::Text(e)) => {
-                    owner_name = Some(e.unescape()?.to_string());
+                    owner_name = Some(e.unescape_with(irods_unescapes)?.to_string());
                     State::OwnerZone
                 }
                 (State::OwnerZone, Event::Start(e)) if e.name().as_ref() == b"ownerZone" => {
                     State::OwnerZoneInner
                 }
                 (State::OwnerZoneInner, Event::Text(e)) => {
-                    owner_zone = Some(e.unescape()?.to_string());
+                    owner_zone = Some(e.unescape_with(irods_unescapes)?.to_string());
                     State::CreateTime
                 }
                 (State::CreateTime, Event::Start(e)) if e.name().as_ref() == b"createTime" => {
                     State::CreateTimeInner
                 }
                 (State::CreateTimeInner, Event::Text(e)) => {
-                    create_time = Some(e.unescape()?.parse()?);
+                    create_time = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::ModifyTime
                 }
                 (State::ModifyTime, Event::Start(e)) if e.name().as_ref() == b"modifyTime" => {
                     State::ModifyTimeInner
                 }
                 (State::ModifyTimeInner, Event::Text(e)) => {
-                    modify_time = Some(e.unescape()?.parse()?);
+                    modify_time = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     return Ok(RodsObjStat {
                         size: size.ok_or(IrodsError::Other("Missing size".into()))?,
                         object_type: object_type

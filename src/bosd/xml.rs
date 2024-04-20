@@ -27,13 +27,13 @@ macro_rules! tag_fmt {
 
 pub struct XML;
 
-pub(crate) fn irods_unescapes<'entity>(s: &str) -> Option<&'entity [u8]> {
+pub(crate) fn irods_unescapes<'entity>(s: &str) -> Option<&'entity str> {
     match s {
-        "apos" => Some(b"'"),
-        "lt" => Some(b"<"),
-        "gt" => Some(b">"),
-        "quot" => Some(b"\""),
-        "amp" => Some(b"&"),
+        "apos" => Some("'"),
+        "lt" => Some("<"),
+        "gt" => Some(">"),
+        "quot" => Some("\""),
+        "amp" => Some("&"),
         _ => None,
     }
 }

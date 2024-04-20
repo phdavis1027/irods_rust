@@ -1,13 +1,17 @@
 use std::io::{Cursor, Write};
 
 use crate::{
-    bosd::{xml::XMLSerializable, Serialiazable},
+    bosd::{
+        xml::{irods_escapes, XMLSerializable},
+        Serialiazable,
+    },
     common::IrodsProt,
     error::errors::IrodsError,
     tag, tag_fmt,
 };
 
 use irods_xml::{
+    escape::escape_with,
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };
@@ -64,10 +68,26 @@ impl XMLSerializable for StartupPack {
         tag!(writer, "irodsProt", irods_prot);
         tag_fmt!(writer, "reconnFlag", "{}", self.reconn_flag);
         tag_fmt!(writer, "connectCnt", "{}", self.connect_cnt);
-        tag!(writer, "proxyUser", &self.proxy_user);
-        tag!(writer, "proxyRcatZone", &self.proxy_zone);
-        tag!(writer, "clientUser", &self.client_user);
-        tag!(writer, "clientRcatZone", &self.client_zone);
+        tag!(
+            writer,
+            "proxyUser",
+            escape_with(&self.proxy_user, irods_escapes).as_ref()
+        );
+        tag!(
+            writer,
+            "proxyRcatZone",
+            escape_with(&self.proxy_zone, irods_escapes).as_ref()
+        );
+        tag!(
+            writer,
+            "clientUser",
+            escape_with(&self.client_user, irods_escapes).as_ref()
+        );
+        tag!(
+            writer,
+            "clientRcatZone",
+            escape_with(&self.client_zone, irods_escapes).as_ref()
+        );
         tag_fmt!(
             writer,
             "relVersion",
@@ -77,7 +97,11 @@ impl XMLSerializable for StartupPack {
             self.rel_version.2
         );
         tag!(writer, "apiVersion", "d");
-        tag!(writer, "option", &self.option);
+        tag!(
+            writer,
+            "option",
+            escape_with(&self.option, irods_escapes).as_ref()
+        );
 
         writer.write_event(Event::End(BytesEnd::new("StartupPack_PI")))?;
 

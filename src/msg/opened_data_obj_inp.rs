@@ -47,10 +47,7 @@ impl OpenedDataObjInp {
 
 impl Serialiazable for OpenedDataObjInp {}
 impl XMLSerializable for OpenedDataObjInp {
-    fn to_xml(
-        &self,
-        sink: &mut Vec<u8>,
-    ) -> Result<usize, crate::error::errors::IrodsError> {
+    fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, crate::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = irods_xml::Writer::new(&mut cursor);
 

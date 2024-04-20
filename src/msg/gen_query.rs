@@ -66,7 +66,7 @@ impl XMLSerializable for GenQueryInp {
         for (_, predicate) in &self.conditions {
             match predicate {
                 IcatPredicate::Equals(value) => {
-                    tag_fmt!(writer, "svalue", "='{}'", value);
+                    tag_fmt!(writer, "svalue", "=&apos;{}&apos;", value);
                 }
             }
         }
