@@ -6,9 +6,9 @@ use std::{
     sync::Arc,
 };
 
+use crate::error::errors::IrodsError;
 use futures::TryFutureExt;
 use native_tls::TlsConnector;
-use crate::error::errors::IrodsError;
 use tokio::net::TcpStream as AsyncTcpStream;
 use tokio::{
     fs::File,
@@ -119,7 +119,7 @@ where
         .await?;
         conn.get_server_cs_neg().await?;
         conn.send_use_ssl().await?;
-        conn.get_version().await?;
+        let version = conn.get_version().await?;
 
         let cert = conn.create_cert(&self.inner.config).await?;
 
@@ -135,6 +135,6 @@ where
         conn.send_handshake_header(&self.inner.config).await?;
         conn.send_shared_secret(self.inner.config.key_size).await?;
 
-        Ok(conn.into_unauthenticated())
+        Ok(conn.into_unauthenticated(version))
     }
 }
