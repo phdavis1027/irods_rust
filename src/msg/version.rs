@@ -17,7 +17,7 @@ pub struct Version {
     pub cookie: u16,
 }
 
-struct RelVersion((u8, u8, u8));
+pub struct RelVersion((u8, u8, u8));
 impl TryFrom<&str> for RelVersion {
     type Error = IrodsError;
 

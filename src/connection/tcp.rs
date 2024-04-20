@@ -45,8 +45,8 @@ where
         )
         .await?;
 
-        conn.get_version().await?;
+        let version = conn.get_version().await?;
 
-        Ok(conn.into_unauthenticated())
+        Ok(conn.into_unauthenticated(version))
     }
 }

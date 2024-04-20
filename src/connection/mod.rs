@@ -22,7 +22,7 @@ use tokio::net::TcpStream;
 use crate::common::APN;
 use crate::msg::bin_bytes_buf::BinBytesBuf;
 use crate::msg::header::{HandshakeHeader, SharedSecretHeader};
-use crate::msg::version::Version;
+use crate::msg::version::{RelVersion, Version};
 use crate::{
     bosd::{Deserializable, ProtocolEncoding, Serialiazable},
     common::CsNegResult,
@@ -368,8 +368,11 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub(crate) fn into_unauthenticated(self) -> UnauthenticatedConnection<T, C> {
-        UnauthenticatedConnection::new(self.account, self.resources)
+    pub(crate) fn into_unauthenticated(
+        self,
+        version: (u8, u8, u8),
+    ) -> UnauthenticatedConnection<T, C> {
+        UnauthenticatedConnection::new(self.account, self.resources, version)
     }
 
     pub fn new(account: Account, resources: ResourceBundle<C>) -> Self {
@@ -424,10 +427,10 @@ where
         Ok(())
     }
 
-    pub(crate) async fn get_version(&mut self) -> Result<(), IrodsError> {
+    pub(crate) async fn get_version(&mut self) -> Result<(u8, u8, u8), IrodsError> {
         let (header, version) = self.resources.get_header_and_msg::<T, Version>().await?;
         // TODO: Check version
-        Ok(())
+        Ok(version.rel_version)
     }
 
     pub(crate) async fn send_handshake_header(
@@ -460,6 +463,7 @@ where
     resources: ResourceBundle<C>,
     account: Account,
     phantom_protocol: PhantomData<T>,
+    version: (u8, u8, u8),
 }
 
 impl<T, C> UnauthenticatedConnection<T, C>
@@ -525,16 +529,17 @@ where
         Ok(challenge)
     }
 
-    pub fn new(account: Account, resources: ResourceBundle<C>) -> Self {
+    pub fn new(account: Account, resources: ResourceBundle<C>, version: (u8, u8, u8)) -> Self {
         Self {
             resources,
             account,
+            version,
             phantom_protocol: PhantomData,
         }
     }
 
     pub(crate) fn into_connection(self, signature: Vec<u8>) -> Connection<T, C> {
-        Connection::new(self.account, self.resources, signature)
+        Connection::new(self.account, self.resources, self.version, signature)
     }
 }
 
@@ -543,11 +548,17 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub fn new(account: Account, resources: ResourceBundle<C>, signature: Vec<u8>) -> Self {
+    pub fn new(
+        account: Account,
+        resources: ResourceBundle<C>,
+        version: (u8, u8, u8),
+        signature: Vec<u8>,
+    ) -> Self {
         Self {
             resources,
             account,
             signature,
+            version,
             phantom_protocol: PhantomData,
         }
     }
@@ -582,5 +593,6 @@ where
     pub(crate) resources: ResourceBundle<C>,
     pub(crate) account: Account,
     pub(crate) signature: Vec<u8>,
+    pub(crate) version: (u8, u8, u8),
     pub(crate) phantom_protocol: PhantomData<T>,
 }
