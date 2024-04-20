@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
-use quick_xml::Writer;
 use crate::error::errors::IrodsError;
+use quick_xml::Writer;
 
 use crate::common::IrodsProt;
 
@@ -26,6 +26,29 @@ macro_rules! tag_fmt {
 }
 
 pub struct XML;
+
+pub(crate) fn irods_unescapes<'entity>(s: &str) -> Option<&'entity [u8]> {
+    match s {
+        "apos" => Some(b"'"),
+        "lt" => Some(b"<"),
+        "gt" => Some(b">"),
+        "quot" => Some(b"\""),
+        "amp" => Some(b"&"),
+        _ => None,
+    }
+}
+
+pub(crate) fn irods_escapes<'entity>(c: u8) -> Option<&'entity [u8]> {
+    match c {
+        b'<' => Some(b"&lt;"),
+        b'>' => Some(b"&gt;"),
+        b'\'' => Some(b"&apos;"),
+        b'"' => Some(b"&quot;"),
+        b'`' => Some(b"&apos;"),
+        b'&' => Some(b"&amp;"),
+        _ => None,
+    }
+}
 
 pub trait XMLDeserializable {
     fn from_xml(xml: &[u8]) -> Result<Self, IrodsError>

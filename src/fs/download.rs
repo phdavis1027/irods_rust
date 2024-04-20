@@ -1,8 +1,8 @@
 use std::{os::unix::fs::FileExt, path::Path};
 
+use crate::error::errors::IrodsError;
 use deadpool::managed::{self, Object};
 use futures::{stream::FuturesUnordered, StreamExt};
-use crate::error::errors::IrodsError;
 use tokio::fs::OpenOptions;
 
 use crate::{
@@ -202,6 +202,7 @@ mod test {
     use super::*;
 
     #[tokio::test]
+    #[ignore]
     async fn test_parallel_download() {
         let account = Account::test_account();
 

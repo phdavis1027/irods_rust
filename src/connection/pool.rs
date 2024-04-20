@@ -1,8 +1,8 @@
 use std::time::Duration;
 
+use crate::error::errors::IrodsError;
 use deadpool::managed::{Manager, RecycleError, RecycleResult};
 use futures::TryFutureExt;
-use crate::error::errors::IrodsError;
 
 use crate::bosd::ProtocolEncoding;
 
