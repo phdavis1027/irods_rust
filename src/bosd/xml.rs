@@ -1,7 +1,7 @@
-use std::io::Cursor;
+use std::io::{Cursor, Read};
 
 use crate::error::errors::IrodsError;
-use irods_xml::Writer;
+use irods_xml::{Reader, Writer};
 
 use crate::common::IrodsProt;
 
@@ -65,6 +65,12 @@ pub trait XMLSerializableChild {
         &self,
         writer: &'r mut Writer<&'t1 mut Cursor<&'t2 mut Vec<u8>>>,
     ) -> Result<(), IrodsError>;
+}
+
+pub trait XMLDeserializableChild {
+    fn from_nested_xml(reader: Reader<&[u8]>) -> Result<Self, IrodsError>
+    where
+        Self: Sized;
 }
 
 impl ProtocolEncoding for XML {

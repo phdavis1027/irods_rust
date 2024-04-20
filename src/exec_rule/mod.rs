@@ -1,15 +1,14 @@
-use std::net::SocketAddr;
-
 use tokio::io::{AsyncRead, AsyncWrite};
 
 use crate::{
-    bosd::{Deserializable, ProtocolEncoding, Serialiazable},
+    bosd::{Deserializable, ProtocolEncoding},
     connection::Connection,
 };
 
 use crate::error::errors::IrodsError;
 
 pub mod exec_rule_out;
+pub mod rule_output;
 
 pub trait Rule {
     type Output: Deserializable;
@@ -28,4 +27,12 @@ pub struct ExecRuleOut {
     pub std_out: String,
     pub std_err: String,
     pub exit_code: i32,
+}
+
+#[derive(Debug)]
+pub struct RuleOutput<T>
+where
+    T: Deserializable,
+{
+    pub output: T,
 }
