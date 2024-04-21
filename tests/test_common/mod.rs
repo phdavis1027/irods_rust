@@ -9,21 +9,7 @@ use irods_client::{
         tcp::TcpConnector,
         Account,
     },
-    rule,
 };
-
-#[rule(
-    body = r##"
-    writeLine('stdout', "$username says '*greeting, *greeting2!'");
-    *x = 42;
-    "##,
-    output = ["execRuleOut", "x"]
-)]
-#[derive(Debug)]
-pub struct VeryAdvancedHelloWorldRule {
-    greeting1: String,
-    greeting2: String,
-}
 
 pub fn test_manager<T, C, A>() -> IrodsManager<XML, TcpConnector, NativeAuthenticator>
 where

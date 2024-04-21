@@ -3,7 +3,7 @@ pub mod cond_input;
 pub mod cs_neg;
 pub mod data_obj_inp;
 pub mod file_lseek_out;
-// pub mod gen_query;
+pub mod gen_query;
 pub mod header;
 pub mod opened_data_obj_inp;
 pub mod spec_coll;

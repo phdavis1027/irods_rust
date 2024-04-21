@@ -3,9 +3,8 @@ pub mod common;
 pub mod connection;
 pub mod error;
 pub mod fs;
+pub mod gen_query;
 pub mod msg;
-
-extern crate serde;
 
 pub mod exec_rule;
 pub use exec_rule_macro;

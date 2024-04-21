@@ -97,4 +97,5 @@ pub enum APN {
     DataObjRead = 675,
     ObjStat = 633,
     ExecMyRule = 625,
+    GenQuery = 702,
 }
