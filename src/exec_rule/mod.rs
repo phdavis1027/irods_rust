@@ -22,8 +22,11 @@ pub trait Rule {
 }
 
 #[derive(Debug)]
-pub struct ExecRuleOut {
-    pub std_out: String,
-    pub std_err: String,
-    pub exit_code: i32,
+pub enum ExecRuleOut {
+    Some {
+        std_out: String,
+        std_err: String,
+        exit_code: i32,
+    },
+    None,
 }
