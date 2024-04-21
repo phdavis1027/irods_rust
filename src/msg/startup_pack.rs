@@ -10,7 +10,7 @@ use crate::{
     tag, tag_fmt,
 };
 
-use irods_xml::{
+use quick_xml::{
     escape::escape_with,
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,

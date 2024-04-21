@@ -1,6 +1,6 @@
 use std::io::Cursor;
 
-use irods_xml::events::Event;
+use quick_xml::events::Event;
 
 use super::ExecRuleOut;
 use crate::{
@@ -36,7 +36,7 @@ impl XMLDeserializable for ExecRuleOut {
 
         let mut state = State::Tag;
 
-        let mut reader = irods_xml::Reader::from_reader(xml);
+        let mut reader = quick_xml::Reader::from_reader(xml);
 
         loop {
             state = match (state, reader.read_event()?) {

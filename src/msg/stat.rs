@@ -1,6 +1,6 @@
 use crate::bosd::xml::irods_unescapes;
 use crate::error::errors::IrodsError;
-use irods_xml::{events::Event, Reader};
+use quick_xml::{events::Event, Reader};
 
 use crate::{
     bosd::{xml::XMLDeserializable, Deserializable},

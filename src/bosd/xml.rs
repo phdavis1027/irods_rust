@@ -1,7 +1,7 @@
 use std::io::{Cursor, Read};
 
 use crate::error::errors::IrodsError;
-use irods_xml::{Reader, Writer};
+use quick_xml::{Reader, Writer};
 
 use crate::common::IrodsProt;
 

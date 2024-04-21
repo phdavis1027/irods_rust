@@ -13,8 +13,11 @@ use irods_client::{
 };
 
 #[rule(
-    body = r##"writeLine('stdout', "$username says '*greeting, *greeting2!'")"##,
-    output = "ExecRuleOut"
+    body = r##"
+    writeLine('stdout', "$username says '*greeting, *greeting2!'");
+    *x = 42;
+    "##,
+    output = ["execRuleOut", "x"]
 )]
 #[derive(Debug)]
 pub struct VeryAdvancedHelloWorldRule {

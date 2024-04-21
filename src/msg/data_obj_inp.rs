@@ -1,6 +1,6 @@
 use std::io::{Cursor, Write};
 
-use irods_xml::events::{BytesEnd, BytesStart, BytesText, Event};
+use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
 
 use crate::{
     bosd::{
@@ -46,7 +46,7 @@ impl Serialiazable for DataObjInp {}
 impl XMLSerializable for DataObjInp {
     fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, crate::error::errors::IrodsError> {
         let mut cursor = Cursor::new(sink);
-        let mut writer = irods_xml::Writer::new(&mut cursor);
+        let mut writer = quick_xml::Writer::new(&mut cursor);
 
         writer.write_event(Event::Start(BytesStart::new("DataObjInp_PI")))?;
 

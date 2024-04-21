@@ -3,7 +3,7 @@
 use std::num::ParseIntError;
 
 use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
-use irods_xml::events::Event;
+use quick_xml::events::Event;
 
 use crate::bosd::{xml::XMLDeserializable, Deserializable};
 
@@ -73,7 +73,7 @@ impl XMLDeserializable for Version {
         let mut reconn_addr: Option<String> = None;
         let mut cookie: Option<u16> = None;
 
-        let mut reader = irods_xml::reader::Reader::from_reader(xml);
+        let mut reader = quick_xml::reader::Reader::from_reader(xml);
 
         let mut state = State::Tag;
         // Basically, this is safe because encountering any invalid input will throw the state

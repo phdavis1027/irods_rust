@@ -3,11 +3,11 @@ use std::io::Cursor;
 
 use crate::bosd::xml::irods_unescapes;
 use crate::error::errors::IrodsError;
-use irods_xml::events::BytesEnd;
-use irods_xml::events::BytesStart;
-use irods_xml::events::BytesText;
-use irods_xml::events::Event;
-use irods_xml::Writer;
+use quick_xml::events::BytesEnd;
+use quick_xml::events::BytesStart;
+use quick_xml::events::BytesText;
+use quick_xml::events::Event;
+use quick_xml::Writer;
 
 use std::io::Write;
 
@@ -63,7 +63,7 @@ impl XMLDeserializable for BinBytesBuf {
             Buf,
             BufInner,
         }
-        let mut reader = irods_xml::Reader::from_reader(xml);
+        let mut reader = quick_xml::Reader::from_reader(xml);
         let mut state = State::Tag;
 
         loop {

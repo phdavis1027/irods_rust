@@ -1,5 +1,5 @@
 use crate::{bosd::xml::irods_unescapes, error::errors::IrodsError};
-use irods_xml::{
+use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Reader, Writer,
 };

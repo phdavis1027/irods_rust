@@ -1,7 +1,7 @@
 use std::io::{Cursor, Write};
 
 use crate::error::errors::IrodsError;
-use irods_xml::{
+use quick_xml::{
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
 };

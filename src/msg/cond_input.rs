@@ -1,7 +1,7 @@
 use std::io::{Cursor, Write};
 
 use crate::{bosd::xml::irods_escapes, error::errors::IrodsError};
-use irods_xml::{
+use quick_xml::{
     escape::escape_with,
     events::{BytesEnd, BytesStart, BytesText, Event},
     Writer,
