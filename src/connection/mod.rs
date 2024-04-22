@@ -588,7 +588,7 @@ where
 pub struct Connection<T, C>
 where
     T: ProtocolEncoding,
-    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite,
 {
     pub(crate) resources: ResourceBundle<C>,
     pub(crate) account: Account,

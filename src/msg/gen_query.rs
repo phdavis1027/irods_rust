@@ -47,7 +47,7 @@ impl XMLSerializable for GenQueryInp {
         tag_fmt!(writer, "maxRows", "{}", self.max_rows);
         tag_fmt!(writer, "continueInx", "{}", self.continue_index);
         tag_fmt!(writer, "partialStartIndex", "{}", self.partial_start_inx);
-        tag_fmt!(writer, "flags", "{}", self.flags);
+        tag_fmt!(writer, "options", "{}", self.flags);
 
         self.options.to_nested_xml(&mut writer)?;
 
@@ -69,7 +69,7 @@ impl XMLSerializable for GenQueryInp {
         for (_, predicate) in &self.conditions {
             match predicate {
                 IcatPredicate::Equals(value) => {
-                    tag_fmt!(writer, "svalue", "=&apos;{}&apos;", value);
+                    tag_fmt!(writer, "svalue", " = &apos;{}&apos;", value);
                 }
             }
         }

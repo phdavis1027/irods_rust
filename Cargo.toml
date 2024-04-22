@@ -12,6 +12,7 @@ exec_rule_macro = { path = "../exec_rule_macro" }
 futures = "0.3.30"
 md-5 = "0.10.6"
 native-tls = "0.2.11"
+pin-project = "1.1.5"
 quick-xml = { version = "0.31.0", path = "../irods-xml/" }
 rand = "0.8.5"
 serde = { version = "1.0.197", features = ["derive"] }
