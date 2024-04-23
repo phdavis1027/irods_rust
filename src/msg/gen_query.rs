@@ -1,4 +1,7 @@
-use std::io::{Cursor, Write};
+use std::{
+    io::{Cursor, Write},
+    usize,
+};
 
 use quick_xml::{
     events::{BytesEnd, BytesStart, Event},
@@ -27,13 +30,13 @@ pub enum IcatPredicate {
 
 #[derive(Debug)]
 pub struct GenQueryInp {
-    max_rows: u32,
-    continue_index: usize,
-    partial_start_inx: usize,
-    flags: u32,
-    options: CondInput,
-    selects: Vec<IcatColumn>,
-    conditions: Vec<(IcatColumn, IcatPredicate)>,
+    pub max_rows: u32,
+    pub continue_index: usize,
+    pub partial_start_inx: usize,
+    pub flags: u32,
+    pub options: CondInput,
+    pub selects: Vec<IcatColumn>,
+    pub conditions: Vec<(IcatColumn, IcatPredicate)>,
 }
 
 impl Serialiazable for GenQueryInp {}
@@ -41,6 +44,8 @@ impl XMLSerializable for GenQueryInp {
     fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
+
+        let mut rows_got = 0;
 
         writer.write_event(Event::Start(BytesStart::new("GenQueryInp_PI")))?;
 
@@ -152,19 +157,13 @@ impl QueryBuilder {
     }
 }
 
-#[derive(Debug)]
-pub struct SqlResult {
-    pub attri_inx: IcatColumn,
-    pub value: String,
-}
-
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct GenQueryOut {
     pub row_count: u32,
     pub attr_count: u32,
     pub continue_index: usize,
     pub total_row_count: u32,
-    pub results: Vec<SqlResult>,
+    pub columns: Vec<(IcatColumn, Vec<String>)>,
 }
 
 impl Deserializable for GenQueryOut {}
@@ -197,9 +196,10 @@ impl XMLDeserializable for GenQueryOut {
         let mut attr_count: Option<u32> = None;
         let mut continue_index: Option<usize> = None;
         let mut total_row_count: Option<u32> = None;
-        let mut results: Vec<SqlResult> = Vec::new();
+        let mut columns: Vec<(IcatColumn, Vec<String>)> = Vec::new();
 
-        let mut column = IcatColumn::UserId; // Default
+        let mut column_inx: Option<IcatColumn> = None; // Default
+        let mut column = Vec::new();
 
         let mut state = State::Tag;
 
@@ -239,6 +239,15 @@ impl XMLDeserializable for GenQueryOut {
                     State::Results
                 }
                 (State::Results, Event::Start(e)) if e.name().as_ref() == b"SqlResult_PI" => {
+                    if columns.len() >= attr_count.unwrap() as usize {
+                        return Ok(Self {
+                            row_count: row_count.unwrap(),
+                            attr_count: attr_count.unwrap(),
+                            continue_index: continue_index.unwrap(),
+                            total_row_count: total_row_count.unwrap(),
+                            columns,
+                        });
+                    }
                     State::ResultsInnerAttrInx
                 }
                 (State::ResultsInnerAttrInx, Event::Start(e))
@@ -247,7 +256,14 @@ impl XMLDeserializable for GenQueryOut {
                     State::ResultsInnerAttrInxInner
                 }
                 (State::ResultsInnerAttrInxInner, Event::Text(e)) => {
-                    column = e.unescape_with(irods_unescapes)?.as_ref().try_into()?;
+                    column_inx = Some(
+                        e.unescape_with(irods_unescapes)?
+                            .as_ref()
+                            .try_into()
+                            .map_err(|_| {
+                                IrodsError::Other("Failed to convert column index".to_string())
+                            })?,
+                    );
                     State::ResultsInnerResLen
                 }
                 (State::ResultsInnerResLen, Event::Start(e)) if e.name().as_ref() == b"reslen" => {
@@ -257,29 +273,15 @@ impl XMLDeserializable for GenQueryOut {
                 (State::ResultsInnerValue, Event::Start(e)) if e.name().as_ref() == b"value" => {
                     State::ResultsInnerValueInner
                 }
-                (State::ResultsInnerValueInner, Event::Text(e)) => {
-                    let result = e.unescape_with(irods_unescapes)?.to_string();
-                    results.push(SqlResult {
-                        attri_inx: column,
-                        value: result,
-                    });
+                (State::ResultsInnerValue, Event::End(e))
+                    if e.name().as_ref() == b"SqlResult_PI" =>
+                {
+                    columns.push((column_inx.unwrap(), std::mem::take(&mut column)));
                     State::Results
                 }
-                (State::Results, Event::End(e)) if e.name().as_ref() == b"GenQueryOut_PI" => {
-                    return Ok(Self {
-                        row_count: row_count
-                            .ok_or_else(|| IrodsError::Other("Missing row count".to_string()))?,
-                        attr_count: attr_count.ok_or_else(|| {
-                            IrodsError::Other("Missing attribute count".to_string())
-                        })?,
-                        continue_index: continue_index.ok_or_else(|| {
-                            IrodsError::Other("Missing continue index".to_string())
-                        })?,
-                        total_row_count: total_row_count.ok_or_else(|| {
-                            IrodsError::Other("Missing total row count".to_string())
-                        })?,
-                        results,
-                    });
+                (State::ResultsInnerValueInner, Event::Text(e)) => {
+                    column.push(e.unescape_with(irods_unescapes)?.to_string());
+                    State::ResultsInnerValue
                 }
                 (_, Event::Eof) => return Err(IrodsError::Other("Unexpected EOF".to_string())),
                 state => state.0,

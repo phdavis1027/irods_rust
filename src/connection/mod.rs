@@ -6,6 +6,7 @@ pub mod tcp;
 
 use std::io::Write;
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
 use crate::error::errors::IrodsError;
 use base64::Engine;
@@ -588,11 +589,53 @@ where
 pub struct Connection<T, C>
 where
     T: ProtocolEncoding,
-    C: tokio::io::AsyncRead + tokio::io::AsyncWrite,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     pub(crate) resources: ResourceBundle<C>,
     pub(crate) account: Account,
     pub(crate) signature: Vec<u8>,
     pub(crate) version: (u8, u8, u8),
     pub(crate) phantom_protocol: PhantomData<T>,
+}
+
+pub struct ConnectionHandle<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    inner: Box<Connection<T, C>>,
+}
+
+impl<T, C> ConnectionHandle<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    pub fn new(connection: Connection<T, C>) -> Self {
+        Self {
+            inner: Box::new(connection),
+        }
+    }
+}
+
+impl<T, C> Deref for ConnectionHandle<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    type Target = Connection<T, C>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.inner
+    }
+}
+
+impl<T, C> DerefMut for ConnectionHandle<T, C>
+where
+    T: ProtocolEncoding,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.inner
+    }
 }

@@ -1,9 +1,11 @@
 mod test_common;
 use deadpool::managed;
+use futures::{pin_mut, stream::StreamExt};
 use irods_client::{
     bosd::xml::XML,
     common::icat_column::IcatColumn,
     connection::{authenticate::NativeAuthenticator, pool::IrodsManager, tcp::TcpConnector},
+    gen_query::Query,
     msg::gen_query::{GenQueryInp, IcatPredicate, QueryBuilder},
 };
 use test_common::test_manager;
@@ -14,7 +16,7 @@ async fn gen_query_test() {
 
     let home = "/tempZone/home/rods";
 
-    let query = QueryBuilder::new()
+    let inp = QueryBuilder::new()
         .select(IcatColumn::DataObjectId)
         .select(IcatColumn::DataObjectBaseName)
         .select(IcatColumn::DataObjectSize)
@@ -35,7 +37,15 @@ async fn gen_query_test() {
         .build();
 
     let mut conn = pool.get().await.unwrap();
-    let result = conn.query(query).await.unwrap();
 
-    println!("{:?}", result);
+    let query = Query::new(&mut conn, inp);
+    pin_mut!(query);
+
+    while let Some(result) = query.next().await {
+        println!("{:?}", result);
+    }
+
+    while let Some(result) = query.next().await {
+        println!("{:?}", result);
+    }
 }
