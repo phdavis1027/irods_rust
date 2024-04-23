@@ -4,11 +4,15 @@ use std::{
     task::{Context, Poll},
 };
 
-use futures::{future::BoxFuture, stream, FutureExt, Stream, StreamExt, TryStreamExt};
+use async_stream::try_stream;
+use futures::{
+    future::{self, BoxFuture},
+    stream, FutureExt, Stream, StreamExt, TryStreamExt,
+};
 
 use crate::{
     bosd::ProtocolEncoding,
-    common::APN,
+    common::{icat_column::IcatColumn, APN},
     connection::Connection,
     error::errors::IrodsError,
     msg::{
@@ -17,6 +21,7 @@ use crate::{
     },
 };
 
+pub type Row = Vec<(IcatColumn, String)>;
 impl<T, C> Connection<T, C>
 where
     T: ProtocolEncoding,
@@ -31,29 +36,48 @@ where
         Ok(out)
     }
 
-    pub async fn query(
-        &mut self,
-        inp: &GenQueryInp,
-    ) -> impl Stream<Item = Result<Option<Vec<String>>, IrodsError>> {
-        futures::stream::try_unfold((), |_| async move {
-            let page = self.one_off_query(inp).await?.into_page_of_rows();
-            let stream = stream::iter(page.iter());
-            Ok(Some((stream, ())))
-        })
-        .try_flatten()
+    // TODO: Reimplement this in terms of futures::stream::(try_)unfold
+    // and futures::stream::StreamExt::flatten. My assumption is that
+    // since these don't use message passing, they should be more efficient.
+    pub async fn query<'this, 'inp>(
+        &'this mut self,
+        inp: &'inp GenQueryInp,
+    ) -> impl Stream<Item = Result<Row, IrodsError>> + 'this
+    where
+        'inp: 'this,
+    {
+        try_stream! {
+            let mut more_pages = true;
+            let mut rows_processed = 0;
+            while more_pages {
+                let out = self.one_off_query(inp).await?;
+
+                more_pages = out.continue_index > 0;
+
+                let mut page = out.into_page_of_rows(inp.partial_start_inx);
+
+                while let Some(row) = page.pop() {
+                    if rows_processed >= inp.max_rows {
+                        break;
+                    }
+
+                    rows_processed += 1;
+                    yield row;
+                }
+            }
+        }
     }
 }
 
 impl GenQueryOut {
-    pub fn into_page_of_rows(self) -> Vec<Vec<String>> {
+    pub fn into_page_of_rows(mut self, offset: usize) -> Vec<Row> {
         let mut rows = Vec::new();
 
-        for cur_row_idx in 0..self.row_count as usize {
-            let mut row = Vec::with_capacity(self.attr_count as usize);
+        for (inx, vals) in self.columns.iter_mut() {
+            let mut row = Vec::new();
 
-            for col in self.columns.iter_mut().take(self.attr_count as usize) {
-                let val = std::mem::take(&mut col.value);
-                row.push(val);
+            for val in &mut vals[offset..] {
+                row.push((inx.clone(), std::mem::take(val)));
             }
 
             rows.push(row);
