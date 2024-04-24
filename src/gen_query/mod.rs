@@ -1,14 +1,4 @@
-use std::{
-    marker::PhantomPinned,
-    pin::Pin,
-    task::{Context, Poll},
-};
-
 use async_stream::try_stream;
-use futures::{
-    future::{self, BoxFuture},
-    stream, FutureExt, Stream, StreamExt, TryStreamExt,
-};
 
 use crate::{
     bosd::ProtocolEncoding,
@@ -21,7 +11,11 @@ use crate::{
     },
 };
 
-pub type Row = Vec<(IcatColumn, String)>;
+use futures::{self, stream::Iter, Stream};
+
+#[derive(Debug)]
+pub struct Row(Vec<(IcatColumn, String)>);
+
 impl<T, C> Connection<T, C>
 where
     T: ProtocolEncoding,
@@ -56,7 +50,7 @@ where
 
                 let mut page = out.into_page_of_rows(inp.partial_start_inx);
 
-                while let Some(row) = page.pop() {
+                for await row in page {
                     if rows_processed >= inp.max_rows {
                         break;
                     }
@@ -70,20 +64,27 @@ where
 }
 
 impl GenQueryOut {
-    pub fn into_page_of_rows(mut self, offset: usize) -> Vec<Row> {
-        let mut rows = Vec::new();
-
-        for (inx, vals) in self.columns.iter_mut() {
-            let mut row = Vec::new();
-
-            for val in &mut vals[offset..] {
-                row.push((inx.clone(), std::mem::take(val)));
+    pub fn into_page_of_rows(mut self, offset: usize) -> impl Stream<Item = Row> {
+        let mut rows = match self.columns.get(0) {
+            Some(column) => {
+                let mut rows = Vec::with_capacity(column.1.len());
+                for _ in 0..column.1.len() {
+                    rows.push(Row(Vec::new()));
+                }
+                rows
             }
+            None => {
+                return futures::stream::iter(Vec::new());
+            }
+        };
 
-            rows.push(row);
+        for (cat_inx, col) in self.columns.iter_mut() {
+            for (row_inx, val) in col.iter_mut().enumerate() {
+                rows[row_inx].0.push((cat_inx.clone(), std::mem::take(val)));
+            }
         }
 
-        rows
+        futures::stream::iter(rows)
     }
 }
 
