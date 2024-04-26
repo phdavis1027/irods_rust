@@ -1,4 +1,6 @@
 mod test_common;
+use std::path::Path;
+
 use deadpool::managed;
 use futures::{pin_mut, stream::StreamExt};
 use irods_client::{
@@ -14,33 +16,7 @@ async fn gen_query_test() {
     let pool = test_pool!(test_manager::<XML, TcpConnector, NativeAuthenticator>(), 17);
 
     let home = "/tempZone/home/rods";
-
-    let inp = QueryBuilder::new()
-        .select(IcatColumn::DataObjectId)
-        .select(IcatColumn::DataObjectBaseName)
-        .select(IcatColumn::DataObjectSize)
-        .select(IcatColumn::DataObjectTypeName)
-        .select(IcatColumn::DataObjectReplNum)
-        .select(IcatColumn::DataObjectOwnerName)
-        .select(IcatColumn::DataObjectChecksum)
-        .select(IcatColumn::DataObjectReplicastatus)
-        .select(IcatColumn::DataObjectRescourceName)
-        .select(IcatColumn::DataObjectPhysicalPath)
-        .select(IcatColumn::DataObjectResourceHierarchy)
-        .select(IcatColumn::DataObjectCreateTime)
-        .select(IcatColumn::DataObjectModifyTime)
-        .condition(
-            IcatColumn::CollectionName,
-            IcatPredicate::Equals(home.to_string()),
-        )
-        .build();
-
     let mut conn = pool.get().await.unwrap();
 
-    let rows = conn.query(&inp).await;
-    pin_mut!(rows);
-
-    while let Some(result) = rows.next().await {
-        println!("{:?}", result.unwrap());
-    }
+    conn.ls_data_objects(&Path::new(home)).await.unwrap();
 }

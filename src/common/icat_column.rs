@@ -1,6 +1,6 @@
 use crate::error::errors::IrodsError;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IcatColumn {
     UserId = 201,
     UserName = 202,
@@ -17,7 +17,7 @@ pub enum IcatColumn {
     DataObjectVersion = 405,
     DataObjectTypeName = 406,
     DataObjectSize = 407,
-    DataObjectRescourceName = 409,
+    DataObjectResourceName = 409,
     DataObjectPhysicalPath = 410,
     DataObjectOwnerName = 411,
     DataObjectOwnerZone = 412,
@@ -147,7 +147,7 @@ impl TryFrom<&str> for IcatColumn {
             "405" => Ok(IcatColumn::DataObjectVersion),
             "406" => Ok(IcatColumn::DataObjectTypeName),
             "407" => Ok(IcatColumn::DataObjectSize),
-            "409" => Ok(IcatColumn::DataObjectRescourceName),
+            "409" => Ok(IcatColumn::DataObjectResourceName),
             "410" => Ok(IcatColumn::DataObjectPhysicalPath),
             "411" => Ok(IcatColumn::DataObjectOwnerName),
             "412" => Ok(IcatColumn::DataObjectOwnerZone),
@@ -269,7 +269,7 @@ impl TryFrom<&str> for IcatColumn {
             "405" => Ok(IcatColumn::DataObjectVersion),
             "406" => Ok(IcatColumn::DataObjectTypeName),
             "407" => Ok(IcatColumn::DataObjectSize),
-            "409" => Ok(IcatColumn::DataObjectRescourceName),
+            "409" => Ok(IcatColumn::DataObjectResourceName),
             "410" => Ok(IcatColumn::DataObjectPhysicalPath),
             "411" => Ok(IcatColumn::DataObjectOwnerName),
             "412" => Ok(IcatColumn::DataObjectOwnerZone),

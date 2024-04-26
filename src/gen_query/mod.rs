@@ -11,10 +11,27 @@ use crate::{
     },
 };
 
-use futures::{self, stream::Iter, Stream};
+use futures::{self, Stream};
 
 #[derive(Debug)]
 pub struct Row(Vec<(IcatColumn, String)>);
+
+impl Row {
+    pub fn at<'this>(&'this self, col: IcatColumn) -> Option<&'this String> {
+        self.0.iter().find(|(k, _)| *k == col).map(|(_, v)| v)
+    }
+
+    pub fn at_mut<'this>(&'this mut self, col: IcatColumn) -> Option<&'this mut String> {
+        self.0.iter_mut().find(|(k, _)| *k == col).map(|(_, v)| v)
+    }
+
+    pub fn take(&mut self, col: IcatColumn) -> Option<String> {
+        match self.0.iter_mut().find(|(k, _)| *k == col) {
+            Some((_, v)) => Some(std::mem::take(v)),
+            None => None,
+        }
+    }
+}
 
 impl<T, C> Connection<T, C>
 where
@@ -35,7 +52,7 @@ where
     // since these don't use message passing, they should be more efficient.
     pub async fn query<'this, 'inp>(
         &'this mut self,
-        inp: &'inp GenQueryInp,
+        inp: &'inp mut GenQueryInp,
     ) -> impl Stream<Item = Result<Row, IrodsError>> + 'this
     where
         'inp: 'this,
@@ -46,12 +63,15 @@ where
             while more_pages {
                 let out = self.one_off_query(inp).await?;
 
+                inp.continue_index = out.continue_index;
+
                 more_pages = out.continue_index > 0;
 
-                let mut page = out.into_page_of_rows(inp.partial_start_inx);
+                let page = out.into_page_of_rows();
 
                 for await row in page {
                     if rows_processed >= inp.max_rows {
+                        more_pages = false;
                         break;
                     }
 
@@ -64,7 +84,7 @@ where
 }
 
 impl GenQueryOut {
-    pub fn into_page_of_rows(mut self, offset: usize) -> impl Stream<Item = Row> {
+    pub fn into_page_of_rows(mut self) -> impl Stream<Item = Row> {
         let mut rows = match self.columns.get(0) {
             Some(column) => {
                 let mut rows = Vec::with_capacity(column.1.len());

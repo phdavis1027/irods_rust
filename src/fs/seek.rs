@@ -1,5 +1,5 @@
-use futures::TryFutureExt;
 use crate::error::errors::IrodsError;
+use futures::TryFutureExt;
 
 use crate::{
     bosd::ProtocolEncoding,

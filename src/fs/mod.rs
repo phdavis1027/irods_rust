@@ -1,5 +1,6 @@
 pub mod close;
 pub mod download;
+pub mod ls;
 pub mod open;
 pub mod read;
 pub mod seek;
