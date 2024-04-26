@@ -40,6 +40,7 @@ where
             .select(IcatColumn::DataObjectCreateTime)
             .select(IcatColumn::DataObjectModifyTime)
             .select(IcatColumn::DataObjectReplicastatus)
+            .select(IcatColumn::DataObjectCollectionId)
             .condition(
                 IcatColumn::CollectionName,
                 IcatPredicate::Equals(path.to_str().unwrap().to_owned()),

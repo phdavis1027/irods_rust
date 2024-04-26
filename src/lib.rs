@@ -23,12 +23,39 @@ pub mod reexports {
     pub use tokio;
 }
 
+#[derive(Debug)]
+pub enum DataObjectType {
+    Generic,
+    Tar,
+    GzipTar,
+    Bzip2,
+    Zip,
+    Msso,
+}
+
+impl TryFrom<&str> for DataObjectType {
+    type Error = IrodsError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "generic" => Ok(DataObjectType::Generic),
+            "tar file" => Ok(DataObjectType::Tar),
+            "gzipTar" => Ok(DataObjectType::GzipTar),
+            "bzip2Tar" => Ok(DataObjectType::Bzip2),
+            "zipFile" => Ok(DataObjectType::Zip),
+            "msso file" => Ok(DataObjectType::Msso),
+            _ => Err(IrodsError::Other("Invalid DataObjectType".to_owned())),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct DataObject {
     id: i64,
     collection_id: i64,
     path: PathBuf,
-    name: String,
     size: usize,
+    data_type: DataObjectType,
     replica: ReplicaInfo,
 }
 
@@ -49,6 +76,13 @@ impl DataObject {
 
         Ok(Self {
             path,
+
+            data_type: value
+                .at(IcatColumn::DataObjectTypeName)
+                .ok_or_else(|| IrodsError::Other("Missing data_type".to_owned()))?
+                .as_str()
+                .try_into()?,
+
             id: value
                 .at(IcatColumn::DataObjectId)
                 .ok_or_else(|| IrodsError::Other("Missing id".to_owned()))?
@@ -60,10 +94,6 @@ impl DataObject {
                 .ok_or_else(|| IrodsError::Other("Missing collection_id".to_owned()))?
                 .parse()
                 .map_err(|_| IrodsError::Other("Failed to parse collection_id".to_owned()))?,
-
-            name: value
-                .take(IcatColumn::DataObjectBaseName)
-                .ok_or_else(|| IrodsError::Other("Missing name".to_owned()))?,
 
             size: value
                 .at(IcatColumn::DataObjectSize)
@@ -77,6 +107,7 @@ impl DataObject {
 }
 
 //TODO: Should this be generic over timezone?
+#[derive(Debug)]
 pub struct ReplicaInfo {
     physical_path: String,
     id: i64,

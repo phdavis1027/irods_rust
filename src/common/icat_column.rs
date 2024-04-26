@@ -267,7 +267,6 @@ impl TryFrom<&str> for IcatColumn {
             "403" => Ok(IcatColumn::DataObjectBaseName),
             "404" => Ok(IcatColumn::DataObjectReplNum),
             "405" => Ok(IcatColumn::DataObjectVersion),
-            "406" => Ok(IcatColumn::DataObjectTypeName),
             "407" => Ok(IcatColumn::DataObjectSize),
             "409" => Ok(IcatColumn::DataObjectResourceName),
             "410" => Ok(IcatColumn::DataObjectPhysicalPath),
