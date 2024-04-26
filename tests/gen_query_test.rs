@@ -18,7 +18,7 @@ async fn gen_query_test() {
     let home = "/tempZone/home/rods";
     let mut conn = pool.get().await.unwrap();
 
-    let stream = conn.ls_data_objects(&Path::new(home)).await;
+    let stream = conn.ls_data_objects(&Path::new(home), 500).await;
     pin_mut!(stream);
 
     while let Some(obj) = stream.next().await {

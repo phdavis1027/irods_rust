@@ -93,20 +93,26 @@ where
             ObjectType::UnknownObj => {
                 Err(IrodsError::Other("Path does not exist in zone".to_string()))
             }
-            ObjectType::DataObj => self.download_data_object(stat).await,
+            ObjectType::DataObj => {
+                let path = self.local_path.clone();
+                self.download_data_object(&stat, &path).await
+            }
             ObjectType::Coll if !self.recursive => Err(IrodsError::Other(
                 "Collection download without recursive flag".to_string(),
             )),
             ObjectType::Coll => {
-                self.download_collection_parallel(self.remote_path, self.local_path)
-                    .await?;
+                self.download_collection_parallel(&stat).await?;
                 Ok(())
             }
             _ => Err(IrodsError::Other("Invalid local path".to_string())),
         }
     }
 
-    pub async fn download_data_object(self, stat: RodsObjStat) -> Result<(), IrodsError> {
+    pub async fn download_data_object(
+        self,
+        stat: &RodsObjStat,
+        dst: &Path,
+    ) -> Result<(), IrodsError> {
         if stat.size > self.max_size_before_parallel {
             self.download_data_object_parallel(stat.size as usize).await
         } else {
@@ -119,12 +125,13 @@ where
             let mut file = OpenOptions::new()
                 .create(true)
                 .write(true)
-                .open(self.local_path)
+                .open(dst)
                 .await?;
 
             let handle = conn.open_request(self.remote_path).execute().await?;
 
-            conn.read_data_obj_into_bytes_buf(handle, stat.size as usize).await?;
+            conn.read_data_obj_into_bytes_buf(handle, stat.size as usize)
+                .await?;
 
             file.write_all(&mut conn.resources.bytes_buf).await?;
 
@@ -132,34 +139,19 @@ where
         }
     }
 
-    pub async fn download_collection_parallel(
-        self,
-        remote_path: &Path,
-        local_path: &Path,
-    ) -> Result<(), IrodsError> {
+    pub async fn download_collection_parallel(self, stat: &RodsObjStat) -> Result<(), IrodsError> {
+        if !self.local_path.exists() {
+            tokio::fs::create_dir(self.local_path).await?;
+        }
+
         let mut conn = self
             .pool
             .get()
             .await
             .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
-        let mut futures = FuturesUnordered::new();
-
-        let data_objects = conn
-            .ls_data_objects(remote_path, self.max_collection_children)
-            .await;
-
-        pin_mut!(data_objects);
-
-        while let Some(do) = data_objects.next().await {
-            let do = do?;
-
-        }
-
         Ok(())
     }
-
-
 
     pub async fn download_data_object_parallel(self, size: usize) -> Result<(), IrodsError> {
         let len_per_task = ((size as f64 / self.num_tasks as f64).floor() as usize)
@@ -246,46 +238,5 @@ where
         self.resources.bytes_buf = buf;
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
-
-    use crate::{
-        bosd::xml::XML,
-        connection::{
-            authenticate::NativeAuthenticator, pool::IrodsManager, tcp::TcpConnector, Account,
-        },
-    };
-
-    use super::*;
-
-    #[tokio::test]
-    #[ignore]
-    async fn test_parallel_download() {
-        let account = Account::test_account();
-
-        let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(172, 18, 0, 3), 1247));
-        let connector = TcpConnector::new(addr);
-        let authenticator = NativeAuthenticator::new(30, "rods".into());
-        let manager: IrodsManager<XML, TcpConnector, NativeAuthenticator> =
-            IrodsManager::new(account, connector, authenticator, 10, 10);
-
-        let mut pool: managed::Pool<IrodsManager<_, _, _>> = managed::Pool::builder(manager)
-            .max_size(30)
-            .build()
-            .unwrap();
-
-        ParallelDownloadContext::new(
-            &mut pool,
-            29,
-            &Path::new("/tempZone/home/rods/totc.txt"),
-            &Path::new("./totc.txt"),
-        )
-        .download()
-        .await
-        .unwrap();
     }
 }

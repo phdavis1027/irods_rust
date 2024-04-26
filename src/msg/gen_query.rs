@@ -172,6 +172,7 @@ impl XMLDeserializable for GenQueryOut {
     where
         Self: Sized,
     {
+        #[derive(Debug)]
         #[repr(u8)]
         enum State {
             Tag,
@@ -206,38 +207,68 @@ impl XMLDeserializable for GenQueryOut {
         let mut reader = Reader::from_reader(xml);
 
         loop {
-            state = match (state, reader.read_event()?) {
+            let new_state = (state, reader.read_event()?);
+            dbg!(&new_state);
+            state = match new_state {
+                // <GenQueryOut_PI> -> <rowCnt>
                 (State::Tag, Event::Start(e)) if e.name().as_ref() == b"GenQueryOut_PI" => {
                     State::RowCnt
                 }
+                // <rowCnt> -> value
                 (State::RowCnt, Event::Start(e)) if e.name().as_ref() == b"rowCnt" => {
                     State::RowCntInner
                 }
+                // <rowCnt>value</rowCnt> -> </rowCnt>
                 (State::RowCntInner, Event::Text(e)) => {
                     row_count = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::AttrCnt
                 }
+                // </rowCnt> -> <attriCnt>
+                (State::RowCntInner, Event::End(e)) if e.name().as_ref() == b"rowCnt" => {
+                    State::AttrCnt
+                }
+                // <attriCnt> -> value
                 (State::AttrCnt, Event::Start(e)) if e.name().as_ref() == b"attriCnt" => {
                     State::AttrCntInner
                 }
+                // <attriCnt>value</attriCnt> -> </attriCnt>
                 (State::AttrCntInner, Event::Text(e)) => {
                     attr_count = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::ContinueInx
                 }
+                // </attriCnt> -> <continueInx>
+                (State::AttrCntInner, Event::End(e)) if e.name().as_ref() == b"attriCnt" => {
+                    State::ContinueInx
+                }
+                // <continueInx> -> value
                 (State::ContinueInx, Event::Start(e)) if e.name().as_ref() == b"continueInx" => {
                     State::ContinueInxInner
                 }
+                // <continueInx>value</continueInx> -> </continueInx>
                 (State::ContinueInxInner, Event::Text(e)) => {
                     continue_index = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::TotalRowCnt
                 }
+                // </continueInx> -> <totalRowCount>
+                (State::ContinueInxInner, Event::End(e)) if e.name().as_ref() == b"continueInx" => {
+                    State::TotalRowCnt
+                }
+                // <totalRowCount> -> value
                 (State::TotalRowCnt, Event::Start(e)) if e.name().as_ref() == b"totalRowCount" => {
                     State::TotalRowCntInner
                 }
+                // <totalRowCount>value</totalRowCount> -> </totalRowCount>
                 (State::TotalRowCntInner, Event::Text(e)) => {
                     total_row_count = Some(e.unescape_with(irods_unescapes)?.parse()?);
                     State::Results
                 }
+                // </totalRowCount> -> <SqlResult_PI>
+                (State::TotalRowCntInner, Event::End(e))
+                    if e.name().as_ref() == b"totalRowCount" =>
+                {
+                    State::Results
+                }
+                // <SqlResult_PI> -> <attriInx>
                 (State::Results, Event::Start(e)) if e.name().as_ref() == b"SqlResult_PI" => {
                     if columns.len() >= attr_count.unwrap() as usize {
                         return Ok(Self {
@@ -250,11 +281,13 @@ impl XMLDeserializable for GenQueryOut {
                     }
                     State::ResultsInnerAttrInx
                 }
+                // <attriInx> -> value
                 (State::ResultsInnerAttrInx, Event::Start(e))
                     if e.name().as_ref() == b"attriInx" =>
                 {
                     State::ResultsInnerAttrInxInner
                 }
+                // <attriInx>value</attriInx> -> </attriInx>
                 (State::ResultsInnerAttrInxInner, Event::Text(e)) => {
                     column_inx = Some(
                         e.unescape_with(irods_unescapes)?
@@ -266,21 +299,43 @@ impl XMLDeserializable for GenQueryOut {
                     );
                     State::ResultsInnerResLen
                 }
+                // </attriInx> -> <reslen>
+                (State::ResultsInnerAttrInxInner, Event::End(e))
+                    if e.name().as_ref() == b"attriInx" =>
+                {
+                    State::ResultsInnerResLen
+                }
+                // <reslen> -> value
                 (State::ResultsInnerResLen, Event::Start(e)) if e.name().as_ref() == b"reslen" => {
                     State::ResultsInnerResLenInner
                 }
+                // <reslen>value</reslen> -> </reslen>
                 (State::ResultsInnerResLenInner, Event::Text(_)) => State::ResultsInnerValue,
+                // </reslen>
+                (State::ResultsInnerResLenInner, Event::End(e))
+                    if e.name().as_ref() == b"reslen" =>
+                {
+                    State::ResultsInnerValue
+                }
+                // <value> -> value
                 (State::ResultsInnerValue, Event::Start(e)) if e.name().as_ref() == b"value" => {
                     State::ResultsInnerValueInner
                 }
+                // <value>value</value> -> </value>
                 (State::ResultsInnerValue, Event::End(e))
                     if e.name().as_ref() == b"SqlResult_PI" =>
                 {
                     columns.push((column_inx.unwrap(), std::mem::take(&mut column)));
                     State::Results
                 }
+                // <value>value</value> -> </value>
                 (State::ResultsInnerValueInner, Event::Text(e)) => {
+                    println!("Value: {:?}", e.unescape_with(irods_unescapes)?);
                     column.push(e.unescape_with(irods_unescapes)?.to_string());
+                    State::ResultsInnerValue
+                }
+                // </value> -> <attriInx>
+                (State::ResultsInnerValueInner, Event::End(e)) if e.name().as_ref() == b"value" => {
                     State::ResultsInnerValue
                 }
                 (_, Event::Eof) => return Err(IrodsError::Other("Unexpected EOF".to_string())),
