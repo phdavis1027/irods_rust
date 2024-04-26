@@ -70,7 +70,7 @@ where
                 let page = out.into_page_of_rows();
 
                 for await row in page {
-                    if rows_processed >= inp.max_rows {
+                    if (inp.max_rows != 0) && (rows_processed >= inp.max_rows) {
                         more_pages = false;
                         break;
                     }

@@ -1,17 +1,15 @@
 use std::{os::unix::fs::FileExt, path::Path};
 
-use crate::error::errors::IrodsError;
-use deadpool::managed::{self, Object};
-use futures::{stream::FuturesUnordered, StreamExt};
+use crate::{error::errors::IrodsError, msg::stat::RodsObjStat};
+use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
 use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 
 use crate::{
     bosd::ProtocolEncoding,
     common::ObjectType,
     connection::{authenticate::Authenticate, connect::Connect, pool::ConnectionPool, Connection},
 };
-
-use super::OpenFlag;
 
 pub struct ParallelDownloadContext<'pool, 'path, T, C, A>
 where
@@ -28,6 +26,8 @@ where
     force_overwrite: bool,
     create: bool,
     recursive: bool,
+    max_collection_children: u32,
+    max_size_before_parallel: usize,
 }
 
 impl<'pool, 'path, T, C, A> ParallelDownloadContext<'pool, 'path, T, C, A>
@@ -52,6 +52,8 @@ where
             recursive: false,
             create: true,
             resource: None,
+            max_collection_children: 500,
+            max_size_before_parallel: 32 * (1024_usize.pow(2)), // Default from PRC
         }
     }
 
@@ -65,6 +67,16 @@ where
         self
     }
 
+    pub fn max_collection_children(&mut self, max: u32) -> &mut Self {
+        self.max_collection_children = max;
+        self
+    }
+
+    pub fn max_size_before_parallel(&mut self, max: usize) -> &mut Self {
+        self.max_size_before_parallel = max;
+        self
+    }
+
     pub async fn download(self) -> Result<(), IrodsError> {
         let mut conn = self
             .pool
@@ -75,34 +87,83 @@ where
         let stat = conn.stat(self.remote_path).await?;
 
         match stat.object_type {
-            ObjectType::UnknownObj => {
-                Err(IrodsError::Other("Path does not exist in zone".to_string()))
-            }
             _ if self.local_path.exists() && !self.force_overwrite => Err(IrodsError::Other(
                 "Local path exists and force_overwrite flag is not set".to_string(),
             )),
-            ObjectType::DataObj if self.local_path.exists() => {
-                tokio::fs::remove_file(self.local_path).await?;
-                self.download_data_object_parallel(stat.size).await
+            ObjectType::UnknownObj => {
+                Err(IrodsError::Other("Path does not exist in zone".to_string()))
             }
-            ObjectType::DataObj => self.download_data_object_parallel(stat.size).await,
-            ObjectType::Coll if self.local_path.exists() => {
-                tokio::fs::remove_dir_all(self.local_path).await?;
-                Ok(())
-            }
-            ObjectType::Coll if self.recursive => Ok(()),
-            ObjectType::Coll => Err(IrodsError::Other(
+            ObjectType::DataObj => self.download_data_object(stat).await,
+            ObjectType::Coll if !self.recursive => Err(IrodsError::Other(
                 "Collection download without recursive flag".to_string(),
             )),
+            ObjectType::Coll => {
+                self.download_collection_parallel(self.remote_path, self.local_path)
+                    .await?;
+                Ok(())
+            }
             _ => Err(IrodsError::Other("Invalid local path".to_string())),
         }
     }
 
+    pub async fn download_data_object(self, stat: RodsObjStat) -> Result<(), IrodsError> {
+        if stat.size > self.max_size_before_parallel {
+            self.download_data_object_parallel(stat.size as usize).await
+        } else {
+            let mut conn = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+            let mut file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(self.local_path)
+                .await?;
+
+            let handle = conn.open_request(self.remote_path).execute().await?;
+
+            conn.read_data_obj_into_bytes_buf(handle, stat.size as usize).await?;
+
+            file.write_all(&mut conn.resources.bytes_buf).await?;
+
+            Ok(())
+        }
+    }
+
+    pub async fn download_collection_parallel(
+        self,
+        remote_path: &Path,
+        local_path: &Path,
+    ) -> Result<(), IrodsError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+        let mut futures = FuturesUnordered::new();
+
+        let data_objects = conn
+            .ls_data_objects(remote_path, self.max_collection_children)
+            .await;
+
+        pin_mut!(data_objects);
+
+        while let Some(do) = data_objects.next().await {
+            let do = do?;
+
+        }
+
+        Ok(())
+    }
+
+
+
     pub async fn download_data_object_parallel(self, size: usize) -> Result<(), IrodsError> {
         let len_per_task = ((size as f64 / self.num_tasks as f64).floor() as usize)
             + ((((size as u32) % self.num_tasks != 0) as usize) as usize);
-
-        dbg!(len_per_task);
 
         let futs = FuturesUnordered::new();
         for task in 0..self.num_tasks {

@@ -21,6 +21,7 @@ where
     pub async fn ls_data_objects<'this, 'p>(
         &'this mut self,
         path: &'p Path,
+        max_results: u32,
     ) -> impl Stream<Item = Result<DataObject, IrodsError>> + 'this
     where
         'p: 'this,
@@ -45,6 +46,7 @@ where
                 IcatColumn::CollectionName,
                 IcatPredicate::Equals(path.to_str().unwrap().to_owned()),
             )
+            .max_rows(max_results)
             .build();
 
         // this is the fastest way I can think of to avoid
