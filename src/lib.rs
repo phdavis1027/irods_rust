@@ -29,7 +29,7 @@ pub struct DataObject {
     path: PathBuf,
     name: String,
     size: usize,
-    replicas: Vec<ReplicaInfo>,
+    replica: ReplicaInfo,
 }
 
 impl DataObject {
@@ -71,7 +71,7 @@ impl DataObject {
                 .parse()
                 .map_err(|_| IrodsError::Other("Failed to parse size".to_owned()))?,
 
-            replicas: Vec::new(),
+            replica: ReplicaInfo::try_from(value)?,
         })
     }
 }

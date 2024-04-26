@@ -1,6 +1,7 @@
 use std::path::Path;
 
-use futures::{pin_mut, StreamExt};
+use async_stream::try_stream;
+use futures::{pin_mut, Stream, StreamExt};
 
 use crate::{
     bosd::ProtocolEncoding,
@@ -9,7 +10,7 @@ use crate::{
     error::errors::IrodsError,
     irods_instant,
     msg::gen_query::{IcatPredicate, QueryBuilder},
-    DataObject,
+    DataObject, ReplicaInfo,
 };
 
 impl<T, C> Connection<T, C>
@@ -17,7 +18,13 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub async fn ls_data_objects(&mut self, path: &Path) -> Result<Vec<DataObject>, IrodsError> {
+    pub async fn ls_data_objects<'this, 'p>(
+        &'this mut self,
+        path: &'p Path,
+    ) -> impl Stream<Item = Result<DataObject, IrodsError>> + 'this
+    where
+        'p: 'this,
+    {
         let mut inp = QueryBuilder::new()
             .select(IcatColumn::DataObjectId)
             .select(IcatColumn::DataObjectBaseName)
@@ -27,7 +34,7 @@ where
             .select(IcatColumn::DataObjectOwnerName)
             .select(IcatColumn::DataObjectChecksum)
             .select(IcatColumn::DataObjectReplicastatus)
-            .select(IcatColumn::DataObjectRescourceName)
+            .select(IcatColumn::DataObjectResourceName)
             .select(IcatColumn::DataObjectPhysicalPath)
             .select(IcatColumn::DataObjectResourceHierarchy)
             .select(IcatColumn::DataObjectCreateTime)
@@ -39,22 +46,13 @@ where
             )
             .build();
 
-        let out = self.query(&mut inp).await;
-        pin_mut!(out);
-
-        while let Some(row) = out.next().await {
-            println!("{:?}", row);
-            let row = row?;
-
-            let modify_time =
-                irods_instant(row.at(IcatColumn::DataObjectModifyTime).unwrap().as_str())?;
-
-            let create_time =
-                irods_instant(row.at(IcatColumn::DataObjectCreateTime).unwrap().as_str())?;
-
-            println!("{:?}", row.at(IcatColumn::DataObjectReplicastatus).unwrap());
+        // this is the fastest way I can think of to avoid
+        // fighting with the stream combinators
+        try_stream! {
+            for await row in self.query(&mut inp).await {
+                let mut row = row?;
+                yield DataObject::try_from_row_and_collection(&mut row, path)?;
+            }
         }
-
-        unimplemented!()
     }
 }
