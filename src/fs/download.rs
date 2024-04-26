@@ -82,7 +82,7 @@ where
         self
     }
 
-    pub async fn download(self) -> Result<(), IrodsError> {
+    pub async fn download(mut self) -> Result<(), IrodsError> {
         let mut conn = self
             .pool
             .get()
@@ -107,14 +107,14 @@ where
             )),
             ObjectType::Coll => {
                 let path = self.local_path;
-                self.download_collection(&stat, &path).await
+                self.download_collection(&path).await
             }
             _ => Err(IrodsError::Other("Invalid path".to_string())),
         }
     }
 
     pub async fn download_data_object(
-        self,
+        &mut self,
         stat: &RodsObjStat,
         dst: &Path,
     ) -> Result<(), IrodsError> {
@@ -144,11 +144,19 @@ where
         }
     }
 
-    pub async fn download_collection(
-        self,
-        stat: &RodsObjStat,
-        dst: &Path,
-    ) -> Result<(), IrodsError> {
+    pub async fn stat_and_download_data_object(&mut self, dst: &Path) -> Result<(), IrodsError> {
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+        let stat = conn.stat(self.remote_path).await?;
+
+        self.download_data_object(&stat, dst).await
+    }
+
+    pub async fn download_collection(&mut self, dst: &Path) -> Result<(), IrodsError> {
         if self.local_path.exists() {
             tokio::fs::remove_dir_all(dst).await?
         }
@@ -164,10 +172,38 @@ where
             .ls_data_objects(self.remote_path, self.max_collection_children)
             .await;
 
+        pin_mut!(data_objects);
+
+        while let Some(data_object) = data_objects.next().await {
+            let data_object = data_object?;
+            let local_path = self.local_path.join(data_object.path.file_name().unwrap());
+            self.stat_and_download_data_object(&local_path).await?;
+        }
+
+        let mut conn = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+        let sub_collections = conn
+            .ls_sub_collections(self.remote_path, self.max_collection_children)
+            .await;
+
+        pin_mut!(sub_collections);
+
+        while let Some(sub_collection) = sub_collections.next().await {
+            let sub_collection = sub_collection?;
+            let local_path = self
+                .local_path
+                .join(sub_collection.path.file_name().unwrap());
+            self.download_collection(&local_path).await?;
+        }
+
         Ok(())
     }
 
-    pub async fn download_data_object_parallel(self, size: usize) -> Result<(), IrodsError> {
+    pub async fn download_data_object_parallel(&mut self, size: usize) -> Result<(), IrodsError> {
         let len_per_task = ((size as f64 / self.num_tasks as f64).floor() as usize)
             + ((((size as u32) % self.num_tasks != 0) as usize) as usize);
 
@@ -180,11 +216,13 @@ where
                 .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
             let resource = self.resource.clone();
+            let remote_path = self.remote_path.to_path_buf();
+            let local_path = self.local_path.to_path_buf();
 
             futs.push(async move {
                 conn.do_parallel_download_task(
-                    self.remote_path,
-                    self.local_path,
+                    &remote_path,
+                    &local_path,
                     resource,
                     task as usize,
                     len_per_task,

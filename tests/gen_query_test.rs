@@ -16,13 +16,11 @@ use test_common::test_manager;
 async fn gen_query_test() {
     let mut pool = test_pool!(test_manager::<XML, TcpConnector, NativeAuthenticator>(), 17);
 
-    let home = "/tempZone/home/rods";
-
     let mut ctx = ParallelDownloadContext::new(
         &mut pool,
         10,
         &Path::new("/tempZone/home/rods/test_coll"),
-        &Path::new("."),
+        &Path::new("./test_dir"),
     );
 
     ctx.recursive().force_overwrite();
