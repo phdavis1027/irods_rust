@@ -1,7 +1,7 @@
 use std::{os::unix::fs::FileExt, path::Path};
 
 use crate::{error::errors::IrodsError, msg::stat::RodsObjStat};
-use futures::{pin_mut, stream::FuturesUnordered, StreamExt};
+use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, StreamExt};
 use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 
@@ -156,51 +156,65 @@ where
         self.download_data_object(&stat, dst).await
     }
 
-    pub async fn download_collection(&mut self, dst: &Path) -> Result<(), IrodsError> {
-        if self.local_path.exists() {
-            tokio::fs::remove_dir_all(dst).await?
+    pub fn download_collection<'this, 'd>(
+        &'this mut self,
+        dst: &'d Path,
+    ) -> BoxFuture<'this, Result<(), IrodsError>>
+    // Boxing and sync signature needed to
+    // A) prevent the async statement from
+    // compiling a cycle on recursion
+    // B) running afowl of the borrow checker, i.e.,
+    // we can manually specify the lifetimes
+    where
+        'd: 'this,
+    {
+        async move {
+            if self.local_path.exists() {
+                tokio::fs::remove_dir_all(dst).await?
+            }
+            tokio::fs::create_dir(self.local_path).await?;
+
+            let mut conn = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+            let data_objects = conn
+                .ls_data_objects(self.remote_path, self.max_collection_children)
+                .await;
+
+            pin_mut!(data_objects);
+
+            while let Some(data_object) = data_objects.next().await {
+                let data_object = data_object?;
+                let local_path = self.local_path.join(data_object.path.file_name().unwrap());
+                self.stat_and_download_data_object(&local_path).await?;
+            }
+
+            let mut conn = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+            let sub_collections = conn
+                .ls_sub_collections(self.remote_path, self.max_collection_children)
+                .await;
+
+            pin_mut!(sub_collections);
+
+            while let Some(sub_collection) = sub_collections.next().await {
+                let sub_collection = sub_collection?;
+                let local_path = self
+                    .local_path
+                    .join(sub_collection.path.file_name().unwrap());
+                self.download_collection(&local_path).await?;
+            }
+
+            Ok(())
         }
-        tokio::fs::create_dir(self.local_path).await?;
-
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
-
-        let data_objects = conn
-            .ls_data_objects(self.remote_path, self.max_collection_children)
-            .await;
-
-        pin_mut!(data_objects);
-
-        while let Some(data_object) = data_objects.next().await {
-            let data_object = data_object?;
-            let local_path = self.local_path.join(data_object.path.file_name().unwrap());
-            self.stat_and_download_data_object(&local_path).await?;
-        }
-
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
-
-        let sub_collections = conn
-            .ls_sub_collections(self.remote_path, self.max_collection_children)
-            .await;
-
-        pin_mut!(sub_collections);
-
-        while let Some(sub_collection) = sub_collections.next().await {
-            let sub_collection = sub_collection?;
-            let local_path = self
-                .local_path
-                .join(sub_collection.path.file_name().unwrap());
-            self.download_collection(&local_path).await?;
-        }
-
-        Ok(())
+        .boxed()
     }
 
     pub async fn download_data_object_parallel(&mut self, size: usize) -> Result<(), IrodsError> {
