@@ -207,9 +207,7 @@ impl XMLDeserializable for GenQueryOut {
         let mut reader = Reader::from_reader(xml);
 
         loop {
-            let new_state = (state, reader.read_event()?);
-            dbg!(&new_state);
-            state = match new_state {
+            state = match (state, reader.read_event()?) {
                 // <GenQueryOut_PI> -> <rowCnt>
                 (State::Tag, Event::Start(e)) if e.name().as_ref() == b"GenQueryOut_PI" => {
                     State::RowCnt

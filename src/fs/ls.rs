@@ -10,7 +10,7 @@ use crate::{
     error::errors::IrodsError,
     irods_instant,
     msg::gen_query::{IcatPredicate, QueryBuilder},
-    DataObject, ReplicaInfo,
+    Collection, DataObject, ReplicaInfo,
 };
 
 impl<T, C> Connection<T, C>
@@ -55,6 +55,35 @@ where
             for await row in self.query(&mut inp).await {
                 let mut row = row?;
                 yield DataObject::try_from_row_and_collection(&mut row, path)?;
+            }
+        }
+    }
+
+    pub async fn ls_sub_collections<'this, 'p>(
+        &'this mut self,
+        path: &'p Path,
+        max_results: u32,
+    ) -> impl Stream<Item = Result<Collection, IrodsError>> + 'this
+    where
+        'p: 'this,
+    {
+        let mut inp = QueryBuilder::new()
+            .select(IcatColumn::CollectionId)
+            .select(IcatColumn::CollectionName)
+            .select(IcatColumn::CollectionOwnerName)
+            .select(IcatColumn::CollectionModifyTime)
+            .select(IcatColumn::CollectionCreateTime)
+            .condition(
+                IcatColumn::CollectionParentName,
+                IcatPredicate::Equals(path.to_str().unwrap().to_owned()),
+            )
+            .max_rows(max_results)
+            .build();
+
+        try_stream! {
+            for await row in self.query(&mut inp).await {
+                let mut row = row?;
+                yield Collection::try_from_row_and_parent_collection(&mut row, &path)?;
             }
         }
     }

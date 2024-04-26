@@ -192,6 +192,58 @@ impl TryFrom<&str> for ReplStatus {
     }
 }
 
+#[derive(Debug)]
+pub struct Collection {
+    id: i64,
+    path: PathBuf,
+    owner: String,
+    create_time: DateTime<Utc>,
+    modify_time: DateTime<Utc>,
+}
+
+impl Collection {
+    pub fn try_from_row_and_parent_collection(
+        value: &mut Row,
+        parent_path: &Path,
+    ) -> Result<Self, IrodsError> {
+        let mut path = PathBuf::new();
+
+        path.push(parent_path);
+
+        let name = value
+            .take(IcatColumn::CollectionName)
+            .ok_or_else(|| IrodsError::Other("Missing name".to_owned()))?;
+
+        path.push(name);
+
+        Ok(Self {
+            path,
+
+            id: value
+                .at(IcatColumn::CollectionId)
+                .ok_or_else(|| IrodsError::Other("Missing id".to_owned()))?
+                .parse()
+                .map_err(|_| IrodsError::Other("Failed to parse id".to_owned()))?,
+
+            owner: value
+                .take(IcatColumn::CollectionOwnerName)
+                .ok_or_else(|| IrodsError::Other("Missing owner".to_owned()))?,
+
+            create_time: irods_instant(
+                value
+                    .at(IcatColumn::CollectionCreateTime)
+                    .ok_or_else(|| IrodsError::Other("Missing create_time".to_owned()))?,
+            )?,
+
+            modify_time: irods_instant(
+                value
+                    .at(IcatColumn::CollectionModifyTime)
+                    .ok_or_else(|| IrodsError::Other("Missing modify_time".to_owned()))?,
+            )?,
+        })
+    }
+}
+
 pub fn irods_instant(time: &str) -> Result<DateTime<Utc>, IrodsError> {
     let stamp = time
         .parse::<i64>()

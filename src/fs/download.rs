@@ -57,6 +57,11 @@ where
         }
     }
 
+    pub fn recursive(&mut self) -> &mut Self {
+        self.recursive = true;
+        self
+    }
+
     pub fn force_overwrite(&mut self) -> &mut Self {
         self.force_overwrite = true;
         self
@@ -94,17 +99,17 @@ where
                 Err(IrodsError::Other("Path does not exist in zone".to_string()))
             }
             ObjectType::DataObj => {
-                let path = self.local_path.clone();
+                let path = self.local_path;
                 self.download_data_object(&stat, &path).await
             }
             ObjectType::Coll if !self.recursive => Err(IrodsError::Other(
                 "Collection download without recursive flag".to_string(),
             )),
             ObjectType::Coll => {
-                self.download_collection_parallel(&stat).await?;
-                Ok(())
+                let path = self.local_path;
+                self.download_collection(&stat, &path).await
             }
-            _ => Err(IrodsError::Other("Invalid local path".to_string())),
+            _ => Err(IrodsError::Other("Invalid path".to_string())),
         }
     }
 
@@ -139,16 +144,25 @@ where
         }
     }
 
-    pub async fn download_collection_parallel(self, stat: &RodsObjStat) -> Result<(), IrodsError> {
-        if !self.local_path.exists() {
-            tokio::fs::create_dir(self.local_path).await?;
+    pub async fn download_collection(
+        self,
+        stat: &RodsObjStat,
+        dst: &Path,
+    ) -> Result<(), IrodsError> {
+        if self.local_path.exists() {
+            tokio::fs::remove_dir_all(dst).await?
         }
+        tokio::fs::create_dir(self.local_path).await?;
 
         let mut conn = self
             .pool
             .get()
             .await
             .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+        let data_objects = conn
+            .ls_data_objects(self.remote_path, self.max_collection_children)
+            .await;
 
         Ok(())
     }
