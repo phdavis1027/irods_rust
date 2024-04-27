@@ -99,8 +99,11 @@ where
                 Err(IrodsError::Other("Path does not exist in zone".to_string()))
             }
             ObjectType::DataObj => {
-                let path = self.local_path;
-                self.download_data_object(&stat, &path).await
+                let remote_path = self.remote_path;
+                let local_path = self.local_path;
+
+                self.download_data_object(&stat, &remote_path, &local_path)
+                    .await
             }
             ObjectType::Coll if !self.recursive => Err(IrodsError::Other(
                 "Collection download without recursive flag".to_string(),
@@ -108,6 +111,7 @@ where
             ObjectType::Coll => {
                 let local_path = self.local_path;
                 let remote_path = self.remote_path;
+
                 self.download_collection(&remote_path, &local_path).await
             }
             _ => Err(IrodsError::Other("Invalid path".to_string())),
@@ -117,6 +121,7 @@ where
     pub async fn download_data_object(
         &mut self,
         stat: &RodsObjStat,
+        src: &Path,
         dst: &Path,
     ) -> Result<(), IrodsError> {
         if stat.size > self.max_size_before_parallel {
@@ -134,13 +139,12 @@ where
                 .open(dst)
                 .await?;
 
-            let handle = conn.open_request(self.remote_path).execute().await?;
+            let handle = conn.open_request(src).execute().await?;
 
             conn.read_data_obj_into_bytes_buf(handle, stat.size as usize)
                 .await?;
 
             let size = stat.size as usize;
-            println!("Size: {}", size);
 
             let mut file = file.into_std().await;
 
@@ -175,9 +179,8 @@ where
             .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
         let stat = conn.stat(src).await?;
-        println!("Stat: {:?}", stat);
 
-        self.download_data_object(&stat, dst).await
+        self.download_data_object(&stat, src, dst).await
     }
 
     pub fn download_collection<'this, 'd>(
@@ -195,10 +198,8 @@ where
     {
         async move {
             if self.local_path.exists() {
-                println!("Removing {:?}", self.local_path);
                 tokio::fs::remove_dir_all(dst).await?
             }
-            println!("Creating {:?}", self.local_path);
             tokio::fs::create_dir(self.local_path).await?;
 
             let mut conn = self
