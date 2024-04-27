@@ -328,7 +328,6 @@ impl XMLDeserializable for GenQueryOut {
                 }
                 // <value>value</value> -> </value>
                 (State::ResultsInnerValueInner, Event::Text(e)) => {
-                    println!("Value: {:?}", e.unescape_with(irods_unescapes)?);
                     column.push(e.unescape_with(irods_unescapes)?.to_string());
                     State::ResultsInnerValue
                 }

@@ -1,5 +1,5 @@
-use futures::TryFutureExt;
 use crate::error::errors::IrodsError;
+use futures::TryFutureExt;
 
 use crate::{
     bosd::ProtocolEncoding,
@@ -54,10 +54,7 @@ where
             )
             .await?;
 
-        let (header, _) = self
-            .resources
-            .get_header_and_msg::<T, FileLseekOut>()
-            .await?;
+        let header = self.resources.read_standard_header::<T>().await?;
 
         self.resources
             .read_to_bytes_buf(header.bs_len as usize)

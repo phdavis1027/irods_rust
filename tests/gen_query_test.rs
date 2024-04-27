@@ -2,13 +2,10 @@ mod test_common;
 use std::path::Path;
 
 use deadpool::managed;
-use futures::{pin_mut, stream::StreamExt};
 use irods_client::{
     bosd::xml::XML,
-    common::icat_column::IcatColumn,
     connection::{authenticate::NativeAuthenticator, pool::IrodsManager, tcp::TcpConnector},
     fs::download::ParallelDownloadContext,
-    msg::gen_query::{GenQueryInp, IcatPredicate, QueryBuilder},
 };
 use test_common::test_manager;
 
@@ -18,9 +15,9 @@ async fn gen_query_test() {
 
     let mut ctx = ParallelDownloadContext::new(
         &mut pool,
-        10,
+        15,
         &Path::new("/tempZone/home/rods/test_coll"),
-        &Path::new("./test_dir"),
+        &Path::new("/home/phillipdavis/irods_test/test_dir"),
     );
 
     ctx.recursive().force_overwrite();

@@ -76,7 +76,6 @@ impl XMLDeserializable for RodsObjStat {
                     State::ObjectType
                 }
                 (State::ObjectType, Event::Start(e)) if e.name().as_ref() == b"objType" => {
-                    dbg!(&e);
                     State::ObjectTypeInner
                 }
                 (State::ObjectTypeInner, Event::Text(e)) => {

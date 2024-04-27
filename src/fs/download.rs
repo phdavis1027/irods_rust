@@ -138,7 +138,9 @@ where
             conn.read_data_obj_into_bytes_buf(handle, stat.size as usize)
                 .await?;
 
-            file.write_all(&mut conn.resources.bytes_buf).await?;
+            conn.close(handle).await?;
+
+            file.sync_all().await?;
 
             Ok(())
         }
@@ -170,8 +172,10 @@ where
     {
         async move {
             if self.local_path.exists() {
+                println!("Removing {:?}", self.local_path);
                 tokio::fs::remove_dir_all(dst).await?
             }
+            println!("Creating {:?}", self.local_path);
             tokio::fs::create_dir(self.local_path).await?;
 
             let mut conn = self
@@ -205,6 +209,7 @@ where
             pin_mut!(sub_collections);
 
             while let Some(sub_collection) = sub_collections.next().await {
+                println!("Subcollection: {:?}", sub_collection);
                 let sub_collection = sub_collection?;
                 let local_path = self
                     .local_path
@@ -295,13 +300,15 @@ where
         let mut buf = std::mem::take(&mut self.resources.bytes_buf);
         let buf = tokio::task::spawn_blocking(move || {
             file.write_all_at(&mut buf, offset as u64)?;
-
+            file.sync_all()?;
             Ok::<_, IrodsError>(buf)
         })
         .await
         .map_err(|_| IrodsError::Other("Failed to write to file".to_string()))??;
 
         self.resources.bytes_buf = buf;
+
+        self.close(handle).await?;
 
         Ok(())
     }
