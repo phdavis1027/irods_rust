@@ -7,7 +7,7 @@ use crate::{
     tag,
 };
 
-#[derive(Debug, Builder)]
+#[derive(Debug, Default, Builder)]
 pub struct GeneralAdminInp {
     pub zero: String,
     pub one: String,

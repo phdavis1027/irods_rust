@@ -2,9 +2,10 @@ use std::path::Path;
 
 use crate::{
     bosd::ProtocolEncoding,
-    common::{AccessLevel, UserType},
+    common::{AccessLevel, UserType, APN},
     connection::Connection,
     error::errors::IrodsError,
+    msg::{admin::GeneralAdminInpBuilder, header::MsgType},
 };
 
 impl<T, C> Connection<T, C>
@@ -88,5 +89,21 @@ where
 
     pub async fn list_quotas_for_user(&mut self, user: String) -> Result<(), IrodsError> {
         todo!()
+    }
+
+    pub async fn register_spec_query(&mut self, query: String) -> Result<(), IrodsError> {
+        let inp = GeneralAdminInpBuilder::default()
+            .zero("add".to_string())
+            .one("specQuery".to_string())
+            .two(query)
+            .build()
+            .unwrap();
+
+        self.send_header_then_msg(&inp, MsgType::RodsApiReq, APN::GeneralAdmin as i32)
+            .await?;
+
+        let _ = self.resources.read_standard_header::<T>().await?;
+
+        Ok(())
     }
 }

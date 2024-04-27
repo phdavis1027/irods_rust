@@ -133,4 +133,5 @@ pub enum APN {
     ObjStat = 633,
     ExecMyRule = 625,
     GenQuery = 702,
+    GeneralAdmin = 701,
 }

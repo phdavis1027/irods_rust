@@ -335,17 +335,29 @@ impl From<DataObject> for Entry {
 }
 
 pub struct AVU {
+    id: i64,
     attribute: String,
     value: String,
     unit: String,
 }
 
 impl AVU {
-    fn new(attribute: String, value: String, unit: String) -> Self {
-        Self {
-            attribute,
-            value,
-            unit,
-        }
+    fn try_from_row(row: &mut Row) -> Result<Self, IrodsError> {
+        Ok(Self {
+            id: row
+                .take(IcatColumn::MetadataAttributeId)
+                .ok_or_else(|| IrodsError::Other("Missing id".to_owned()))?,
+            attribute: row
+                .take(IcatColumn::MetadataAttributeName)
+                .ok_or_else(|| IrodsError::Other("Missing attribute".to_owned()))?,
+
+            value: row
+                .take(IcatColumn::MetadataAttributeValue)
+                .ok_or_else(|| IrodsError::Other("Missing value".to_owned()))?,
+
+            unit: row
+                .take(IcatColumn::MetadataAttributeUnits)
+                .ok_or_else(|| IrodsError::Other("Missing unit".to_owned()))?,
+        })
     }
 }
