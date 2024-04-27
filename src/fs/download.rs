@@ -1,4 +1,4 @@
-use std::{os::unix::fs::FileExt, path::Path};
+use std::{io::Write, os::unix::fs::FileExt, path::Path};
 
 use crate::{error::errors::IrodsError, msg::stat::RodsObjStat};
 use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, StreamExt};
@@ -106,8 +106,9 @@ where
                 "Collection download without recursive flag".to_string(),
             )),
             ObjectType::Coll => {
-                let path = self.local_path;
-                self.download_collection(&path).await
+                let local_path = self.local_path;
+                let remote_path = self.remote_path;
+                self.download_collection(&remote_path, &local_path).await
             }
             _ => Err(IrodsError::Other("Invalid path".to_string())),
         }
@@ -127,7 +128,7 @@ where
                 .await
                 .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
-            let mut file = OpenOptions::new()
+            let file = OpenOptions::new()
                 .create(true)
                 .write(true)
                 .open(dst)
@@ -138,28 +139,50 @@ where
             conn.read_data_obj_into_bytes_buf(handle, stat.size as usize)
                 .await?;
 
-            conn.close(handle).await?;
+            let size = stat.size as usize;
+            println!("Size: {}", size);
 
-            file.sync_all().await?;
+            let mut file = file.into_std().await;
+
+            let mut buf = std::mem::take(&mut conn.resources.bytes_buf);
+
+            let buf = tokio::task::spawn_blocking(move || {
+                println!("buf: {:?}", &buf[..size]);
+                file.write_all(&mut buf[..size])?;
+                file.sync_all()?;
+                Ok::<_, IrodsError>(buf)
+            })
+            .await
+            .map_err(|_| IrodsError::Other("Failed to write to file".to_string()))??;
+
+            conn.resources.bytes_buf = buf;
+
+            conn.close(handle).await?;
 
             Ok(())
         }
     }
 
-    pub async fn stat_and_download_data_object(&mut self, dst: &Path) -> Result<(), IrodsError> {
+    pub async fn stat_and_download_data_object(
+        &mut self,
+        src: &Path,
+        dst: &Path,
+    ) -> Result<(), IrodsError> {
         let mut conn = self
             .pool
             .get()
             .await
             .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
-        let stat = conn.stat(self.remote_path).await?;
+        let stat = conn.stat(src).await?;
+        println!("Stat: {:?}", stat);
 
         self.download_data_object(&stat, dst).await
     }
 
     pub fn download_collection<'this, 'd>(
         &'this mut self,
+        src: &'d Path,
         dst: &'d Path,
     ) -> BoxFuture<'this, Result<(), IrodsError>>
     // Boxing and sync signature needed to
@@ -192,8 +215,11 @@ where
 
             while let Some(data_object) = data_objects.next().await {
                 let data_object = data_object?;
-                let local_path = self.local_path.join(data_object.path.file_name().unwrap());
-                self.stat_and_download_data_object(&local_path).await?;
+                let remote_path = src.join(data_object.path.file_name().unwrap());
+                let local_path = dst.join(data_object.path.file_name().unwrap());
+
+                self.stat_and_download_data_object(&remote_path, &local_path)
+                    .await?;
             }
 
             let mut conn = self
@@ -211,10 +237,11 @@ where
             while let Some(sub_collection) = sub_collections.next().await {
                 println!("Subcollection: {:?}", sub_collection);
                 let sub_collection = sub_collection?;
-                let local_path = self
-                    .local_path
-                    .join(sub_collection.path.file_name().unwrap());
-                self.download_collection(&local_path).await?;
+
+                let remote_path = src.join(sub_collection.path.file_name().unwrap());
+                let local_path = dst.join(sub_collection.path.file_name().unwrap());
+
+                self.download_collection(&remote_path, &local_path).await?;
             }
 
             Ok(())
@@ -299,7 +326,7 @@ where
         // doesn't allocate until something is pushed to it.
         let mut buf = std::mem::take(&mut self.resources.bytes_buf);
         let buf = tokio::task::spawn_blocking(move || {
-            file.write_all_at(&mut buf, offset as u64)?;
+            file.write_all_at(&mut buf[..len], offset as u64)?;
             file.sync_all()?;
             Ok::<_, IrodsError>(buf)
         })
