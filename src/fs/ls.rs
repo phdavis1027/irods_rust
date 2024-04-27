@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use async_stream::try_stream;
-use futures::{pin_mut, Stream, StreamExt};
+use futures::{pin_mut, Stream, StreamExt, TryFuture};
 
 use crate::{
     bosd::ProtocolEncoding,
@@ -10,7 +10,7 @@ use crate::{
     error::errors::IrodsError,
     irods_instant,
     msg::gen_query::{IcatPredicate, QueryBuilder},
-    Collection, DataObject, ReplicaInfo,
+    Collection, DataObject, ReplicaInfo, AVU,
 };
 
 impl<T, C> Connection<T, C>
@@ -18,42 +18,17 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub async fn get_collection(&mut self, path: &Path) -> Result<Collection, IrodsError> {
-        let mut inp = QueryBuilder::new()
-            .select(IcatColumn::CollectionId)
-            .select(IcatColumn::CollectionName)
-            .select(IcatColumn::CollectionOwnerName)
-            .select(IcatColumn::CollectionCreateTime)
-            .select(IcatColumn::CollectionModifyTime)
-            .condition(
-                IcatColumn::CollectionName,
-                IcatPredicate::Equals(path.to_str().unwrap().to_owned()),
-            )
-            .build();
-
-        let out = self.query(&mut inp).await;
-
-        pin_mut!(out);
-
-        let mut row = out
-            .next()
-            .await
-            .ok_or_else(|| IrodsError::Other("No rows returned from query".into()))??;
-
-        Ok(Collection::try_from_row_and_parent_collection(
-            &mut row, &path,
-        )?)
-    }
-
     pub async fn ls_data_objects<'this, 'p>(
         &'this mut self,
         path: &'p Path,
         max_results: u32,
+        mastet_replica: bool,
+        avu_filter: Option<&'p AVU>,
     ) -> impl Stream<Item = Result<DataObject, IrodsError>> + 'this
     where
         'p: 'this,
     {
-        let mut inp = QueryBuilder::new()
+        let inp = QueryBuilder::new()
             .select(IcatColumn::DataObjectId)
             .select(IcatColumn::DataObjectBaseName)
             .select(IcatColumn::DataObjectSize)
@@ -73,8 +48,30 @@ where
                 IcatColumn::CollectionName,
                 IcatPredicate::Equals(path.to_str().unwrap().to_owned()),
             )
-            .max_rows(max_results)
-            .build();
+            .max_rows(max_results);
+
+        let inp = match avu_filter {
+            Some(avu) => inp
+                .condition(
+                    IcatColumn::MetadataAttributeName,
+                    IcatPredicate::Equals(avu.attribute.to_string()),
+                )
+                .condition(
+                    IcatColumn::MetadataAttributeValue,
+                    IcatPredicate::Equals(avu.value.to_string()),
+                ),
+            None => inp,
+        };
+
+        let mut inp = match mastet_replica {
+            true => inp
+                .condition(
+                    IcatColumn::DataObjectReplNum,
+                    IcatPredicate::Equals("1".to_string()),
+                )
+                .build(),
+            false => inp.build(),
+        };
 
         // this is the fastest way I can think of to avoid
         // fighting with the stream combinators

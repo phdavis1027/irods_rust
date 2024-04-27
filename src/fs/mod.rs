@@ -1,8 +1,13 @@
+pub mod acls;
+pub mod admin;
 pub mod close;
+pub mod delete;
 pub mod download;
 pub mod ls;
+pub mod meta;
 pub mod open;
 pub mod read;
+pub mod resc;
 pub mod seek;
 pub mod stat;
 

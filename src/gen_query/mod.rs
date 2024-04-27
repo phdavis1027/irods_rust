@@ -76,6 +76,7 @@ where
                     }
 
                     rows_processed += 1;
+                    println!("Row: {:?}", row);
                     yield row;
                 }
             }

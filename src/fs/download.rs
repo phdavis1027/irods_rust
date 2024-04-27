@@ -196,10 +196,10 @@ where
         'd: 'this,
     {
         async move {
-            if self.local_path.exists() {
+            if dst.exists() && self.force_overwrite {
                 tokio::fs::remove_dir_all(dst).await?
             }
-            tokio::fs::create_dir(self.local_path).await?;
+            tokio::fs::create_dir(dst).await?;
 
             let mut conn = self
                 .pool
@@ -208,7 +208,7 @@ where
                 .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
             let data_objects = conn
-                .ls_data_objects(self.remote_path, self.max_collection_children)
+                .ls_data_objects(src, self.max_collection_children, true, false, None, false)
                 .await;
 
             pin_mut!(data_objects);
@@ -229,13 +229,12 @@ where
                 .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
             let sub_collections = conn
-                .ls_sub_collections(self.remote_path, self.max_collection_children)
+                .ls_sub_collections(src, self.max_collection_children)
                 .await;
 
             pin_mut!(sub_collections);
 
             while let Some(sub_collection) = sub_collections.next().await {
-                println!("Subcollection: {:?}", sub_collection);
                 let sub_collection = sub_collection?;
 
                 let remote_path = src.join(sub_collection.path.file_name().unwrap());

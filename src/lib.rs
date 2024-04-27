@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use chrono::{Date, DateTime, NaiveDateTime, Utc};
 use common::icat_column::IcatColumn;
-use common::ObjectType;
+use common::{AccessLevel, ObjectType, UserType};
 use error::errors::IrodsError;
 pub use exec_rule_macro;
 pub use exec_rule_macro::rule;
@@ -48,6 +48,14 @@ impl TryFrom<&str> for DataObjectType {
             _ => Err(IrodsError::Other("Invalid DataObjectType".to_owned())),
         }
     }
+}
+
+pub struct AccessControl {
+    path: PathBuf,
+    user_name: String,
+    user_zone: String,
+    user_type: UserType,
+    access_type: AccessLevel,
 }
 
 #[derive(Debug)]
@@ -322,6 +330,22 @@ impl From<DataObject> for Entry {
             data_type: Some(value.data_type),
             checksum: Vec::new(),
             checksum_algo: ChecksumAlgo::Unknown,
+        }
+    }
+}
+
+pub struct AVU {
+    attribute: String,
+    value: String,
+    unit: String,
+}
+
+impl AVU {
+    fn new(attribute: String, value: String, unit: String) -> Self {
+        Self {
+            attribute,
+            value,
+            unit,
         }
     }
 }

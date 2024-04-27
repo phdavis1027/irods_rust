@@ -19,6 +19,41 @@ impl From<&IrodsProt> for &str {
 }
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum UserType {
+    Group,
+    User,
+    GroupAdmin,
+    RodsAdmin,
+}
+
+impl TryFrom<&str> for UserType {
+    type Error = IrodsError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "rodsgroup" => Ok(UserType::Group),
+            "rodsuser" => Ok(UserType::User),
+            "groupadmin" => Ok(UserType::GroupAdmin),
+            "rodsadmin" => Ok(UserType::RodsAdmin),
+            _ => Err(IrodsError::Other("Invalid value for UserType".into())),
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct Quota {
+    resc_name: String,
+    limit: i64,
+}
+
+pub enum AccessLevel {
+    Own,
+    Read,
+    Write,
+    NoAccess,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub enum CsNegPolicy {
     CS_NEG_REFUSE,
     CS_NEG_REQUIRE,
