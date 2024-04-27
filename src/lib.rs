@@ -12,6 +12,7 @@ use std::time::Instant;
 
 use chrono::{Date, DateTime, NaiveDateTime, Utc};
 use common::icat_column::IcatColumn;
+use common::ObjectType;
 use error::errors::IrodsError;
 pub use exec_rule_macro;
 pub use exec_rule_macro::rule;
@@ -112,6 +113,7 @@ pub struct ReplicaInfo {
     physical_path: String,
     id: i64,
     status: ReplStatus,
+    owner: String,
     resc_name: String,
     create_time: DateTime<Utc>,
     modify_time: DateTime<Utc>,
@@ -124,6 +126,9 @@ impl TryFrom<&mut Row> for ReplicaInfo {
 
     fn try_from(value: &mut Row) -> Result<Self, Self::Error> {
         Ok(Self {
+            owner: value
+                .take(IcatColumn::DataObjectOwnerName)
+                .ok_or_else(|| IrodsError::Other("Missing owner".to_owned()))?,
             resc_name: value
                 .at(IcatColumn::DataObjectResourceName)
                 .ok_or_else(|| IrodsError::Other("Missing resc_name".to_owned()))?
@@ -250,4 +255,73 @@ pub fn irods_instant(time: &str) -> Result<DateTime<Utc>, IrodsError> {
         .map_err(|_| IrodsError::Other("Failed to parse timeestamp".to_owned()))?;
 
     Ok(DateTime::<Utc>::from_timestamp(stamp, 0).unwrap())
+}
+
+pub struct Entry {
+    id: i64,
+    entry_type: ObjectType,
+    path: PathBuf,
+    owner: String,
+    size: usize,
+    create_time: DateTime<Utc>,
+    modify_time: DateTime<Utc>,
+    data_type: Option<DataObjectType>,
+    checksum: Vec<u8>,
+    checksum_algo: ChecksumAlgo,
+}
+
+pub enum ChecksumAlgo {
+    SHA1,
+    SHA256,
+    SHA512,
+    ADLER32,
+    MD5,
+    Unknown,
+}
+
+impl From<&str> for ChecksumAlgo {
+    fn from(value: &str) -> Self {
+        match value {
+            "SHA-1" => ChecksumAlgo::SHA1,
+            "SHA-256" => ChecksumAlgo::SHA256,
+            "SHA-512" => ChecksumAlgo::SHA512,
+            "ADLER-32" => ChecksumAlgo::ADLER32,
+            "MD5" => ChecksumAlgo::MD5,
+            _ => ChecksumAlgo::Unknown,
+        }
+    }
+}
+
+impl From<Collection> for Entry {
+    fn from(value: Collection) -> Self {
+        Self {
+            id: value.id,
+            entry_type: ObjectType::Coll,
+            path: value.path,
+            owner: value.owner,
+            size: 0,
+            create_time: value.create_time,
+            modify_time: value.modify_time,
+            data_type: None,
+            checksum: Vec::new(),
+            checksum_algo: ChecksumAlgo::Unknown,
+        }
+    }
+}
+
+impl From<DataObject> for Entry {
+    fn from(value: DataObject) -> Self {
+        Self {
+            id: value.id,
+            entry_type: ObjectType::DataObj,
+            path: value.path,
+            owner: "".to_owned(),
+            size: value.size,
+            create_time: value.replica.create_time,
+            modify_time: value.replica.modify_time,
+            data_type: Some(value.data_type),
+            checksum: Vec::new(),
+            checksum_algo: ChecksumAlgo::Unknown,
+        }
+    }
 }

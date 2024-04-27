@@ -151,7 +151,6 @@ where
             let mut buf = std::mem::take(&mut conn.resources.bytes_buf);
 
             let buf = tokio::task::spawn_blocking(move || {
-                println!("buf: {:?}", &buf[..size]);
                 file.write_all(&mut buf[..size])?;
                 file.sync_all()?;
                 Ok::<_, IrodsError>(buf)

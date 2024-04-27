@@ -45,8 +45,6 @@ impl XMLSerializable for GenQueryInp {
         let mut cursor = Cursor::new(sink);
         let mut writer = Writer::new(&mut cursor);
 
-        let mut rows_got = 0;
-
         writer.write_event(Event::Start(BytesStart::new("GenQueryInp_PI")))?;
 
         tag_fmt!(writer, "maxRows", "{}", self.max_rows);
@@ -67,14 +65,14 @@ impl XMLSerializable for GenQueryInp {
         writer.write_event(Event::End(BytesEnd::new("InxIvalPair_PI")))?;
 
         writer.write_event(Event::Start(BytesStart::new("InxValPair_PI")))?;
-        tag_fmt!(writer, "iiLen", "{}", self.conditions.len());
+        tag_fmt!(writer, "isLen", "{}", self.conditions.len());
         for (column, _) in &self.conditions {
             tag_fmt!(writer, "inx", "{}", *column as u32);
         }
         for (_, predicate) in &self.conditions {
             match predicate {
                 IcatPredicate::Equals(value) => {
-                    tag_fmt!(writer, "svalue", " = &apos;{}&apos;", value);
+                    tag_fmt!(writer, "svalue", "= &apos;{}&apos;", value);
                 }
             }
         }

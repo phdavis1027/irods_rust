@@ -18,6 +18,33 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+    pub async fn get_collection(&mut self, path: &Path) -> Result<Collection, IrodsError> {
+        let mut inp = QueryBuilder::new()
+            .select(IcatColumn::CollectionId)
+            .select(IcatColumn::CollectionName)
+            .select(IcatColumn::CollectionOwnerName)
+            .select(IcatColumn::CollectionCreateTime)
+            .select(IcatColumn::CollectionModifyTime)
+            .condition(
+                IcatColumn::CollectionName,
+                IcatPredicate::Equals(path.to_str().unwrap().to_owned()),
+            )
+            .build();
+
+        let out = self.query(&mut inp).await;
+
+        pin_mut!(out);
+
+        let mut row = out
+            .next()
+            .await
+            .ok_or_else(|| IrodsError::Other("No rows returned from query".into()))??;
+
+        Ok(Collection::try_from_row_and_parent_collection(
+            &mut row, &path,
+        )?)
+    }
+
     pub async fn ls_data_objects<'this, 'p>(
         &'this mut self,
         path: &'p Path,
