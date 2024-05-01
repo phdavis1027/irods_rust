@@ -46,12 +46,23 @@ pub struct Quota {
     limit: i64,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum AccessLevel {
     Own,
     Read,
     Write,
     NoAccess,
+}
+
+impl Into<&'static str> for AccessLevel {
+    fn into(self) -> &'static str {
+        match self {
+            AccessLevel::Own => "own",
+            AccessLevel::Read => "read object",
+            AccessLevel::Write => "modify object",
+            AccessLevel::NoAccess => "",
+        }
+    }
 }
 
 impl TryFrom<&str> for AccessLevel {
