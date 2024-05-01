@@ -1,24 +1,25 @@
 use derive_builder::Builder;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
+use rand::random;
 use std::io::Cursor;
 
 use crate::{
     bosd::{xml::XMLSerializable, Serialiazable},
-    tag,
+    tag, AdminOperation, AdminTarget,
 };
 
-#[derive(Debug, Default, Builder)]
+#[derive(Debug, Builder)]
 pub struct GeneralAdminInp {
-    pub zero: String,
-    pub one: String,
-    pub two: String,
-    pub three: String,
-    pub four: String,
-    pub five: String,
-    pub six: String,
-    pub seven: String,
-    pub eight: String,
-    pub nine: String,
+    action: AdminOperation,
+    target: AdminTarget,
+    two: String,
+    three: String,
+    four: String,
+    five: String,
+    six: String,
+    seven: String,
+    eight: String,
+    nine: String,
 }
 
 impl Serialiazable for GeneralAdminInp {}
@@ -30,8 +31,8 @@ impl XMLSerializable for GeneralAdminInp {
 
         writer.write_event(Event::Start(BytesStart::new("GeneralAdminInp_PI")))?;
 
-        tag!(writer, "arg0", self.zero.as_str());
-        tag!(writer, "arg1", self.one.as_str());
+        tag!(writer, "arg0", self.action.into());
+        tag!(writer, "arg1", self.target.into());
         tag!(writer, "arg2", self.two.as_str());
         tag!(writer, "arg3", self.three.as_str());
         tag!(writer, "arg4", self.four.as_str());

@@ -24,6 +24,24 @@ pub struct ModifyAccessRequest {
     path: PathBuf,
 }
 
+impl ModifyAccessRequest {
+    pub fn new(
+        recursive: bool,
+        access_level: AccessLevel,
+        user_name: String,
+        zone: String,
+        path: PathBuf,
+    ) -> Self {
+        Self {
+            recursive,
+            access_level,
+            user_name,
+            zone,
+            path,
+        }
+    }
+}
+
 impl Serialiazable for ModifyAccessRequest {}
 impl XMLSerializable for ModifyAccessRequest {
     fn to_xml(&self, sink: &mut Vec<u8>) -> Result<usize, IrodsError> {

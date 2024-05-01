@@ -26,6 +26,17 @@ pub enum UserType {
     RodsAdmin,
 }
 
+impl Into<&str> for UserType {
+    fn into(self) -> &str {
+        match self {
+            UserType::Group => "rodsgroup",
+            UserType::User => "rodsuser",
+            UserType::GroupAdmin => "groupadmin",
+            UserType::RodsAdmin => "rodsadmin",
+        }
+    }
+}
+
 impl TryFrom<&str> for UserType {
     type Error = IrodsError;
 
@@ -52,6 +63,8 @@ pub enum AccessLevel {
     Read,
     Write,
     NoAccess,
+    Inherit,
+    NoInherit,
 }
 
 impl Into<&'static str> for AccessLevel {
@@ -60,6 +73,8 @@ impl Into<&'static str> for AccessLevel {
             AccessLevel::Own => "own",
             AccessLevel::Read => "read object",
             AccessLevel::Write => "modify object",
+            AccessLevel::Inherit => "inherit",
+            AccessLevel::NoInherit => "noinherit",
             AccessLevel::NoAccess => "",
         }
     }
@@ -73,6 +88,8 @@ impl TryFrom<&str> for AccessLevel {
             "own" => Ok(AccessLevel::Own),
             "read object" => Ok(AccessLevel::Read),
             "modify object" => Ok(AccessLevel::Write),
+            "inherit" => Ok(AccessLevel::Inherit),
+            "noinherit" => Ok(AccessLevel::NoInherit),
             "" => Ok(AccessLevel::NoAccess),
             _ => Err(IrodsError::Other("Invalid value for AccessLevel".into())),
         }
@@ -161,4 +178,5 @@ pub enum APN {
     GenQuery = 702,
     GeneralAdmin = 701,
     ModAvu = 706,
+    ModAccessControl = 707,
 }

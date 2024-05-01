@@ -5,6 +5,7 @@ pub mod error;
 pub mod fs;
 pub mod gen_query;
 pub mod msg;
+pub mod scramble;
 
 pub mod exec_rule;
 use std::path::{Path, PathBuf};
@@ -458,6 +459,44 @@ impl Into<&str> for AVUOperation {
             AVUOperation::RemoveWildcard => "rmw",
             AVUOperation::RemoveById => "rmi",
             AVUOperation::Set => "set",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AdminOperation {
+    Add,
+    Modify,
+    Remove,
+}
+
+impl Into<&str> for AdminOperation {
+    fn into(self) -> &'static str {
+        match self {
+            AdminOperation::Add => "add",
+            AdminOperation::Modify => "modify",
+            AdminOperation::Remove => "remove",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AdminTarget {
+    User,
+    Resource,
+    Zone,
+    Group,
+    SpecQuery,
+}
+
+impl Into<&str> for AdminTarget {
+    fn into(self) -> &'static str {
+        match self {
+            AdminTarget::User => "user",
+            AdminTarget::Resource => "resource",
+            AdminTarget::Zone => "zone",
+            AdminTarget::Group => "group",
+            AdminTarget::SpecQuery => "specQuery",
         }
     }
 }

@@ -37,7 +37,7 @@ use crate::{
 use self::authenticate::NativeAuthenticator;
 use self::ssl::SslConfig;
 
-const MAX_PASSWORD_LEN: usize = 50;
+pub const MAX_PASSWORD_LEN: usize = 50;
 
 #[derive(Clone)]
 pub struct Account {
