@@ -5,7 +5,7 @@ use futures::{pin_mut, Stream};
 
 use crate::{
     bosd::ProtocolEncoding,
-    common::icat_column::IcatColumn,
+    common::{icat_column::IcatColumn, ObjectType},
     connection::Connection,
     error::errors::IrodsError,
     msg::gen_query::{IcatPredicate, QueryBuilder},
@@ -76,7 +76,11 @@ where
     }
 
     pub async fn add_avu(&mut self, path: &Path, avu: &AVU) -> Result<(), IrodsError> {
-        todo!()
+        let stat = self.stat(path).await?;
+
+        match stat.object_type {
+            ObjectType::Coll => 
+        }
     }
 
     pub async fn remove_avu(&mut self, path: &Path, avu: &AVU) -> Result<(), IrodsError> {

@@ -6,6 +6,7 @@ pub mod data_obj_inp;
 pub mod file_lseek_out;
 pub mod gen_query;
 pub mod header;
+pub mod meta;
 pub mod opened_data_obj_inp;
 pub mod spec_coll;
 pub mod startup_pack;

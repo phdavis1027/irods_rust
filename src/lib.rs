@@ -386,6 +386,7 @@ impl From<DataObject> for Entry {
     }
 }
 
+#[derive(Debug)]
 pub struct AVU {
     id: i64,
     attribute: String,
@@ -412,5 +413,51 @@ impl AVU {
                 .take(IcatColumn::MetadataAttributeUnits)
                 .ok_or_else(|| IrodsError::Other("Missing unit".to_owned()))?,
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AVUTarget {
+    User,
+    Collection,
+    DataObject,
+    Resource,
+}
+
+impl Into<&str> for AVUTarget {
+    fn into(self) -> &'static str {
+        match self {
+            AVUTarget::User => "-u",
+            AVUTarget::Collection => "-C",
+            AVUTarget::DataObject => "-u",
+            AVUTarget::Resource => "-R",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AVUOperation {
+    Add,
+    AddWildcard,
+    Modify,
+    Copy,
+    Remove,
+    RemoveWildcard,
+    RemoveById,
+    Set,
+}
+
+impl Into<&str> for AVUOperation {
+    fn into(self) -> &'static str {
+        match self {
+            AVUOperation::Add => "add",
+            AVUOperation::AddWildcard => "addw",
+            AVUOperation::Modify => "mod",
+            AVUOperation::Copy => "cp",
+            AVUOperation::Remove => "rm",
+            AVUOperation::RemoveWildcard => "rmw",
+            AVUOperation::RemoveById => "rmi",
+            AVUOperation::Set => "set",
+        }
     }
 }
