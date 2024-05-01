@@ -31,7 +31,7 @@ where
     where
         'p: 'this,
     {
-        let inp = QueryBuilder::new()
+        let mut inp = QueryBuilder::new()
             .select(IcatColumn::MetadataAttributeId)
             .select(IcatColumn::MetadataAttributeName)
             .select(IcatColumn::MetadataAttributeValue)
@@ -42,14 +42,11 @@ where
             )
             .build();
 
-        let mut stream = self.query(&mut inp).await;
-
-        pin_mut!(stream);
-
         try_stream! {
+            let stream = self.query(&mut inp).await;
             for await row in stream {
-                let row = row?;
-                yield AVU::try_from_row(&mut row)?
+                let mut row = row?;
+                yield AVU::try_from_row(&mut row)?;
             }
         }
     }

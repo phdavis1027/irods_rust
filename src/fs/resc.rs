@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use crate::{bosd::ProtocolEncoding, connection::Connection, error::errors::IrodsError};
 
 impl<T, C> Connection<T, C>
@@ -6,12 +8,12 @@ where
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     /// Should only be called on a data object
-    pub async fn trim(&mut self, path: &Path) -> Result<(), Irods> {
+    pub async fn trim(&mut self, path: &Path) -> Result<(), IrodsError> {
         todo!()
     }
 
     /// Should only be called on a data object
-    pub async fn repl(&mut self, path: &Path) -> Result<(), Irods> {
+    pub async fn repl(&mut self, path: &Path) -> Result<(), IrodsError> {
         todo!()
     }
 

@@ -58,6 +58,58 @@ pub struct AccessControl {
     access_type: AccessLevel,
 }
 
+impl AccessControl {
+    pub fn try_from_row_and_path_for_data_object(
+        row: &mut Row,
+        path: &Path,
+    ) -> Result<Self, IrodsError> {
+        Ok(Self {
+            path: path.to_owned(),
+            user_name: row
+                .take(IcatColumn::UserName)
+                .ok_or_else(|| IrodsError::Other("Missing user_name".to_owned()))?,
+            user_zone: row
+                .take(IcatColumn::UserZone)
+                .ok_or_else(|| IrodsError::Other("Missing user_zone".to_owned()))?,
+            user_type: row
+                .take(IcatColumn::UserType)
+                .ok_or_else(|| IrodsError::Other("Missing user_type".to_owned()))?
+                .as_str()
+                .try_into()?,
+            access_type: row
+                .take(IcatColumn::DataObjectAccessName)
+                .ok_or_else(|| IrodsError::Other("Missing access_type".to_owned()))?
+                .as_str()
+                .try_into()?,
+        })
+    }
+
+    pub fn try_from_row_and_path_for_collection(
+        row: &mut Row,
+        path: &Path,
+    ) -> Result<Self, IrodsError> {
+        Ok(Self {
+            path: path.to_owned(),
+            user_name: row
+                .take(IcatColumn::UserName)
+                .ok_or_else(|| IrodsError::Other("Missing user_name".to_owned()))?,
+            user_zone: row
+                .take(IcatColumn::UserZone)
+                .ok_or_else(|| IrodsError::Other("Missing user_zone".to_owned()))?,
+            user_type: row
+                .take(IcatColumn::UserType)
+                .ok_or_else(|| IrodsError::Other("Missing user_type".to_owned()))?
+                .as_str()
+                .try_into()?,
+            access_type: row
+                .take(IcatColumn::CollectionAccessName)
+                .ok_or_else(|| IrodsError::Other("Missing access_type".to_owned()))?
+                .as_str()
+                .try_into()?,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub struct DataObject {
     id: i64,
@@ -346,7 +398,8 @@ impl AVU {
         Ok(Self {
             id: row
                 .take(IcatColumn::MetadataAttributeId)
-                .ok_or_else(|| IrodsError::Other("Missing id".to_owned()))?,
+                .ok_or_else(|| IrodsError::Other("Missing id".to_owned()))?
+                .parse()?,
             attribute: row
                 .take(IcatColumn::MetadataAttributeName)
                 .ok_or_else(|| IrodsError::Other("Missing attribute".to_owned()))?,

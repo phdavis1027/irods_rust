@@ -1,6 +1,6 @@
 use derive_builder::Builder;
-use futures::io::Cursor;
 use quick_xml::events::{BytesEnd, BytesStart, BytesText, Event};
+use std::io::Cursor;
 
 use crate::{
     bosd::{xml::XMLSerializable, Serialiazable},

@@ -22,7 +22,7 @@ where
         &'this mut self,
         path: &'p Path,
         max_results: u32,
-        mastet_replica: bool,
+        master_replica: bool,
         avu_filter: Option<&'p AVU>,
     ) -> impl Stream<Item = Result<DataObject, IrodsError>> + 'this
     where
@@ -63,7 +63,7 @@ where
             None => inp,
         };
 
-        let mut inp = match mastet_replica {
+        let mut inp = match master_replica {
             true => inp
                 .condition(
                     IcatColumn::DataObjectReplNum,

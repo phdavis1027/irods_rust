@@ -208,7 +208,7 @@ where
                 .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
             let data_objects = conn
-                .ls_data_objects(src, self.max_collection_children, true, false, None, false)
+                .ls_data_objects(src, self.max_collection_children, false, None)
                 .await;
 
             pin_mut!(data_objects);

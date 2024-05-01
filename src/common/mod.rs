@@ -46,11 +46,26 @@ pub struct Quota {
     limit: i64,
 }
 
+#[derive(Debug, Eq, PartialEq)]
 pub enum AccessLevel {
     Own,
     Read,
     Write,
     NoAccess,
+}
+
+impl TryFrom<&str> for AccessLevel {
+    type Error = IrodsError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "own" => Ok(AccessLevel::Own),
+            "read object" => Ok(AccessLevel::Read),
+            "modify object" => Ok(AccessLevel::Write),
+            "" => Ok(AccessLevel::NoAccess),
+            _ => Err(IrodsError::Other("Invalid value for AccessLevel".into())),
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
