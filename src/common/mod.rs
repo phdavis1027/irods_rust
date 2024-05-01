@@ -149,4 +149,5 @@ pub enum APN {
     ExecMyRule = 625,
     GenQuery = 702,
     GeneralAdmin = 701,
+    ModAvu = 706,
 }

@@ -1,15 +1,19 @@
 use std::path::Path;
 
 use async_stream::try_stream;
-use futures::{pin_mut, Stream};
+use futures::Stream;
 
 use crate::{
     bosd::ProtocolEncoding,
-    common::{icat_column::IcatColumn, ObjectType},
+    common::{icat_column::IcatColumn, APN},
     connection::Connection,
     error::errors::IrodsError,
-    msg::gen_query::{IcatPredicate, QueryBuilder},
-    AccessControl, AVU,
+    msg::{
+        gen_query::{IcatPredicate, QueryBuilder},
+        header::MsgType,
+        meta::ModAVURequest,
+    },
+    AVUOperation, AVUTarget, AVU,
 };
 
 impl<T, C> Connection<T, C>
@@ -75,15 +79,35 @@ where
         }
     }
 
-    pub async fn add_avu(&mut self, path: &Path, avu: &AVU) -> Result<(), IrodsError> {
-        let stat = self.stat(path).await?;
+    pub async fn add_avu<'this, 'p>(
+        &'this mut self,
+        target_type: AVUTarget,
+        target_name: String,
+        avu: AVU,
+    ) -> Result<(), IrodsError> {
+        let inp = ModAVURequest::new(AVUOperation::Add, target_type, target_name, avu, None);
 
-        match stat.object_type {
-            ObjectType::Coll => 
-        }
+        self.send_header_then_msg(&inp, MsgType::RodsApiReq, APN::ModAvu as i32)
+            .await?;
+
+        self.resources.read_standard_header::<T>().await?;
+
+        Ok(())
     }
 
-    pub async fn remove_avu(&mut self, path: &Path, avu: &AVU) -> Result<(), IrodsError> {
-        todo!()
+    pub async fn remove_avu<'this, 'p>(
+        &'this mut self,
+        target_type: AVUTarget,
+        target_name: String,
+        avu: AVU,
+    ) -> Result<(), IrodsError> {
+        let inp = ModAVURequest::new(AVUOperation::Remove, target_type, target_name, avu, None);
+
+        self.send_header_then_msg(&inp, MsgType::RodsApiReq, APN::ModAvu as i32)
+            .await?;
+
+        self.resources.read_standard_header::<T>().await?;
+
+        Ok(())
     }
 }
