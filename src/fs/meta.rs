@@ -17,11 +17,35 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
-    pub async fn list_avus_for_data_object(
-        &mut self,
-        path: &Path,
-    ) -> impl Stream<Item = Result<AccessControl, IrodsError>> {
-        todo!()
+    pub async fn list_avus_for_data_object<'this, 'p>(
+        &'this mut self,
+        path: &'p Path,
+    ) -> impl Stream<Item = Result<AVU, IrodsError>> + 'this
+    where
+        'p: 'this,
+    {
+        let mut inp = QueryBuilder::new()
+            .select(IcatColumn::MetadataAttributeId)
+            .select(IcatColumn::MetadataAttributeName)
+            .select(IcatColumn::MetadataAttributeValue)
+            .select(IcatColumn::MetadataAttributeUnits)
+            .condition(
+                IcatColumn::DataObjectBaseName,
+                IcatPredicate::Equals(path.file_name().unwrap().to_str().unwrap().to_string()),
+            )
+            .condition(
+                IcatColumn::CollectionName,
+                IcatPredicate::Equals(path.parent().unwrap().to_str().unwrap().to_string()),
+            )
+            .build();
+
+        try_stream! {
+            let stream = self.query(&mut inp).await;
+            for await row in stream {
+                let mut row = row?;
+                yield AVU::try_from_row(&mut row)?;
+            }
+        }
     }
 
     pub async fn list_avus_for_collection<'this, 'p>(

@@ -1,11 +1,11 @@
 use std::path::Path;
 
 use async_stream::try_stream;
-use futures::Stream;
+use futures::{future::BoxFuture, Stream};
 
 use crate::{
     bosd::ProtocolEncoding,
-    common::icat_column::IcatColumn,
+    common::{icat_column::IcatColumn, ObjectType},
     connection::Connection,
     error::errors::IrodsError,
     msg::gen_query::{IcatPredicate, QueryBuilder},
