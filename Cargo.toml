@@ -11,7 +11,9 @@ chrono = "0.4.38"
 deadpool = { version = "0.11.2", features = ["managed"]}
 derive_builder = "0.20.0"
 exec_rule_macro = { path = "../exec_rule_macro" }
+faster-hex = "0.9.0"
 futures = "0.3.30"
+hex = "0.4.3"
 md-5 = "0.10.6"
 native-tls = "0.2.11"
 pin-project = "1.1.5"

@@ -27,7 +27,7 @@ pub enum UserType {
 }
 
 impl Into<&str> for UserType {
-    fn into(self) -> &str {
+    fn into(self) -> &'static str {
         match self {
             UserType::Group => "rodsgroup",
             UserType::User => "rodsuser",

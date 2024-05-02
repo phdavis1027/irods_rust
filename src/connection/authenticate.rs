@@ -57,7 +57,6 @@ where
 
 pub struct NativeAuthenticator {
     pub a_ttl: u32,
-    pub password: String,
     pub b64_engine: GeneralPurpose,
 }
 
@@ -65,7 +64,6 @@ impl NativeAuthenticator {
     pub fn new(a_ttl: u32, password: String) -> Self {
         Self {
             a_ttl,
-            password,
             b64_engine: Self::create_base64_engine(),
         }
     }
@@ -115,7 +113,7 @@ where
         let pad_buf = &mut conn.resources.bytes_buf[..MAX_PASSWORD_LEN];
         pad_buf.fill(0);
 
-        for (i, c) in self.password.as_bytes().iter().enumerate() {
+        for (i, c) in conn.account.password.as_bytes().iter().enumerate() {
             pad_buf[i] = *c;
         }
 

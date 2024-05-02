@@ -187,10 +187,11 @@ where
             .target(AdminTarget::User)
             .two(user)
             .three("password".to_owned())
-            .four()
             .five(zone)
             .build()
             .unwrap();
+
+        Ok(())
     }
 
     /// GetGroup in go-irodsclient

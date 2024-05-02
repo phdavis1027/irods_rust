@@ -45,6 +45,7 @@ pub struct Account {
     pub client_zone: String,
     pub proxy_user: String,
     pub proxy_zone: String,
+    pub password: String,
 }
 
 impl Account {
@@ -55,6 +56,7 @@ impl Account {
             client_zone: "tempZone".to_string(),
             proxy_user: "rods".to_string(),
             proxy_zone: "tempZone".to_string(),
+            password: "rods".to_string(),
         }
     }
 }
