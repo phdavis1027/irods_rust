@@ -11,7 +11,7 @@ use crate::{
     error::errors::IrodsError,
 };
 
-pub const SCRAMBLE_PADDING: &str = "1gCBizHWbwIYyWLoysGzTe6SyzqFKMniZX05faZHWAwQKXf6Fs";
+pub const SCRAMBLE_PADDING: &[u8; 50] = b"1gCBizHWbwIYyWLoysGzTe6SyzqFKMniZX05faZHWAwQKXf6Fs";
 pub const PREFIX: &str = "A.ObfV2";
 pub const DEFAULT_PASSWORD_KEY: &str = "a9_3fker";
 pub const WHEEL: &[u8; 77] =
@@ -31,17 +31,17 @@ where
         }
 
         // If password is less 25 bytes, we need to pad it
-        let mut len_copy = MAX_PASSWORD_LEN - 10 - password.len();
 
+        let mut cursor = Cursor::new(&mut self.resources.msg_buf);
+        cursor.write_all(password.as_bytes())?;
+
+        let mut len_copy = MAX_PASSWORD_LEN - 10 - password.len();
         if len_copy > 15 {
             if len_copy > SCRAMBLE_PADDING.len() {
                 len_copy = SCRAMBLE_PADDING.len();
             }
+            cursor.write_all(SCRAMBLE_PADDING.get(..len_copy).unwrap().as_ref())?;
         }
-
-        let mut cursor = Cursor::new(&mut self.resources.msg_buf);
-        cursor.write_all(password.as_bytes())?;
-        cursor.write_all(SCRAMBLE_PADDING.as_bytes()[..len_copy].as_ref())?;
 
         let unencrypted_len = cursor.position() as usize;
         println!(
@@ -58,7 +58,7 @@ where
         let mut cursor = Cursor::new(&mut self.resources.error_buf[1..]);
         rand.fill_bytes(&mut cursor.get_mut()[..1]);
         cursor.write_all(PREFIX.as_bytes().get(1..).unwrap())?;
-        cursor.write_all(&mut self.resources.msg_buf[..unencrypted_len])?;
+        cursor.write_all(&mut self.resources.msg_buf[..unencrypted_len + 1])?;
 
         let to_scramble_len = cursor.position() as usize;
 
@@ -70,15 +70,25 @@ where
         // Key buf -> header_buf
         let mut cursor = Cursor::new(&mut self.resources.header_buf);
         cursor.write_all(self.account.password.as_bytes())?;
+
+        println!(
+            "Signature: {:?}",
+            std::str::from_utf8(self.signature.as_ref()).unwrap()
+        );
         cursor.write_all(self.signature.as_ref())?;
-        let nzeros: i32 = 100 - (self.account.password.bytes().len() + self.signature.len()) as i32;
-        if nzeros > 0 {
-            let zeros = &mut self.resources.msg_buf[..nzeros as usize];
-            zeros.fill(0);
-            cursor.write_all(zeros)?;
-        }
+        // let nzeros: i32 = 100 - (self.account.password.bytes().len() + self.signature.len()) as i32;
+        // if nzeros > 0 {
+        //     let zeros = &mut self.resources.msg_buf[..nzeros as usize];
+        //     zeros.fill(0);
+        //     cursor.write_all(zeros)?;
+        // }
 
         let key_buf_len = cursor.position() as usize;
+
+        println!(
+            "Key buf: {:?}",
+            std::str::from_utf8(&self.resources.header_buf[..key_buf_len]).unwrap()
+        );
 
         let digest_len = CoreWrapper::<Md5Core>::output_size();
 
@@ -120,13 +130,17 @@ where
             ring_encoder_buf
         };
 
+        println!("Ring encoder buf: {:?}", ring_encoder_buf);
+
         let output_slice = &mut self.resources.bytes_buf[PREFIX.len()..];
 
         let mut chain = 0;
+
         for (i, c) in self.resources.error_buf[..to_scramble_len]
             .iter()
             .enumerate()
         {
+            let mut found_in_wheel = false;
             let k = ring_encoder_buf[i % 61] as usize;
             for (j, d) in WHEEL.iter().enumerate() {
                 if *d == *c {
@@ -135,8 +149,13 @@ where
                     output_slice[i] = WHEEL[index];
 
                     chain = WHEEL[index] & 0xff;
+                    found_in_wheel = true;
                     break;
                 }
+            }
+
+            if !found_in_wheel {
+                output_slice[i] = *c;
             }
         }
 
