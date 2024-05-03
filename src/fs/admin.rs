@@ -180,16 +180,24 @@ where
             ));
         }
 
-        let mut len_copy = MAX_PASSWORD_LEN - 10 - password.len();
+        let scrambled_len = self.scramble(password.as_str())?;
+        let scrambled_password =
+            String::from_utf8(self.resources.bytes_buf[..scrambled_len].to_vec()).unwrap();
 
         let inp = GeneralAdminInpBuilder::default()
             .action(AdminOperation::Modify)
             .target(AdminTarget::User)
             .two(user)
             .three("password".to_owned())
+            .four(scrambled_password)
             .five(zone)
             .build()
             .unwrap();
+
+        self.send_header_then_msg(&inp, MsgType::RodsApiReq, APN::GeneralAdmin as i32)
+            .await?;
+
+        let _ = self.resources.read_standard_header::<T>().await?;
 
         Ok(())
     }

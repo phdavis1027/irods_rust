@@ -23,6 +23,7 @@ where
         client_zone: "tempZone".to_string(),
         proxy_user: "rods".to_string(),
         proxy_zone: "tempZone".to_string(),
+        password: "rods".to_string(),
     };
 
     let addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(172, 18, 0, 3), 1247));

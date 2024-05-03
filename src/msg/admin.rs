@@ -12,13 +12,21 @@ use crate::{
 pub struct GeneralAdminInp {
     action: AdminOperation,
     target: AdminTarget,
+    #[builder(default = "String::new()")]
     two: String,
+    #[builder(default = "String::new()")]
     three: String,
+    #[builder(default = "String::new()")]
     four: String,
+    #[builder(default = "String::new()")]
     five: String,
+    #[builder(default = "String::new()")]
     six: String,
+    #[builder(default = "String::new()")]
     seven: String,
+    #[builder(default = "String::new()")]
     eight: String,
+    #[builder(default = "String::new()")]
     nine: String,
 }
 
@@ -29,7 +37,7 @@ impl XMLSerializable for GeneralAdminInp {
         let mut cursor = Cursor::new(sink);
         let mut writer = quick_xml::Writer::new(&mut cursor);
 
-        writer.write_event(Event::Start(BytesStart::new("GeneralAdminInp_PI")))?;
+        writer.write_event(Event::Start(BytesStart::new("generalAdminInp_PI")))?;
 
         tag!(writer, "arg0", self.action.into());
         tag!(writer, "arg1", self.target.into());
@@ -42,7 +50,7 @@ impl XMLSerializable for GeneralAdminInp {
         tag!(writer, "arg8", self.eight.as_str());
         tag!(writer, "arg9", self.nine.as_str());
 
-        writer.write_event(Event::End(BytesEnd::new("GeneralAdminInp_PI")))?; // End GeneralAdminInp_PI
+        writer.write_event(Event::End(BytesEnd::new("generalAdminInp_PI")))?; // End GeneralAdminInp_PI
 
         Ok(cursor.position() as usize)
     }
