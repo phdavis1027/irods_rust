@@ -173,6 +173,7 @@ pub enum APN {
     DataObjClose = 673,
     DataObjLSeek = 674,
     DataObjRead = 675,
+    DataObjWrite = 676,
     ObjStat = 633,
     ExecMyRule = 625,
     GenQuery = 702,

@@ -203,16 +203,10 @@ where
 
         let mut buf = std::mem::take(&mut self.resources.bytes_buf);
         let buf = tokio::task::spawn_blocking(move || {
-            let mut remaining = len;
-            let mut offset = (task * len) as usize;
-            loop {
-                let read = file.read_at(&mut buf[..remaining], offset)?;
-                // transfer n bytes
-                self.self
-                    .self
-                    .seek(handle, super::Whence::SeekCur, read)
-                    .await?;
+            if buf.len() < len {
+                buf.resize(len, 0);
             }
+            file.read_exact_at(&mut buf[..len], (task * len) as u64)?;
 
             Ok::<_, IrodsError>(buf)
         })
