@@ -10,6 +10,7 @@ pub mod read;
 pub mod resc;
 pub mod seek;
 pub mod stat;
+pub mod upload;
 
 /*
 #define S_IRWXU 0000700    /* RWX mask for owner */
