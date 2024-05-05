@@ -1,11 +1,17 @@
-use std::{fs::Metadata, path::Path};
+use std::{
+    fs::{Metadata, OpenOptions},
+    os::unix::fs::FileExt,
+    path::Path,
+};
 
 use crate::{
     bosd::ProtocolEncoding,
     common::ObjectType,
-    connection::{authenticate::Authenticate, connect::Connect, pool::ConnectionPool},
+    connection::{authenticate::Authenticate, connect::Connect, pool::ConnectionPool, Connection},
     error::errors::IrodsError,
 };
+
+use super::OpenFlag;
 
 pub struct ParallelTransferContext<'pool, 'path, T, C, A>
 where
@@ -118,8 +124,14 @@ where
         let stat = conn.stat(self.remote_path).await?;
         match stat.object_type {
             ObjectType::UnknownObj => {
-                self.do_upload_file_task(local_path, remote_path, meta, 0)
-                    .await?
+                conn.do_parallel_upload_task(
+                    self.remote_path,
+                    self.local_path,
+                    self.resource.clone(),
+                    0,
+                    meta.len() as usize,
+                )
+                .await?
             }
             ObjectType::Coll if self.force_overwrite => {}
             ObjectType::DataObj if self.force_overwrite => {}
@@ -133,34 +145,12 @@ where
         Ok(())
     }
 
-    pub async fn do_upload_file_task(
-        &mut self,
-        local_path: &Path,
-        remote_path: &Path,
-        meta: Metadata,
-        offset: u64,
-    ) -> Result<(), IrodsError> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| IrodsError::Other("Failed to get connection".into()))?;
-
-        Ok(())
-    }
-
     pub async fn upload_file_parallel(
         &mut self,
         local_path: &Path,
         remote_path: &Path,
         meta: Metadata,
     ) -> Result<(), IrodsError> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| IrodsError::Other("Failed to get connection".into()))?;
-
         Ok(())
     }
 
@@ -175,6 +165,63 @@ where
             .get()
             .await
             .map_err(|_| IrodsError::Other("Failed to get connection".into()))?;
+
+        Ok(())
+    }
+}
+
+impl<T, C> Connection<T, C>
+where
+    T: ProtocolEncoding + Send,
+    C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
+{
+    async fn do_parallel_upload_task(
+        &mut self,
+        remote_path: &Path,
+        local_path: &Path,
+        resource: Option<String>,
+        task: usize,
+        len: usize,
+    ) -> Result<(), IrodsError> {
+        let file = OpenOptions::new().read(true).open(local_path)?;
+
+        let handle = match resource {
+            Some(resc) => {
+                self.open_request(remote_path)
+                    .set_resc(resc.as_str())
+                    .set_flag(OpenFlag::WriteOnly)
+                    .execute()
+                    .await?
+            }
+            None => {
+                self.open_request(remote_path)
+                    .set_flag(OpenFlag::WriteOnly)
+                    .execute()
+                    .await?
+            }
+        };
+
+        let mut buf = std::mem::take(&mut self.resources.bytes_buf);
+        let buf = tokio::task::spawn_blocking(move || {
+            let mut remaining = len;
+            let mut offset = (task * len) as usize;
+            loop {
+                let read = file.read_at(&mut buf[..remaining], offset)?;
+                // transfer n bytes
+                self.self
+                    .self
+                    .seek(handle, super::Whence::SeekCur, read)
+                    .await?;
+            }
+
+            Ok::<_, IrodsError>(buf)
+        })
+        .await
+        .map_err(|_| IrodsError::Other("Failed to transfer file".to_string()))??;
+
+        self.resources.bytes_buf = buf;
+
+        self.close(handle).await?;
 
         Ok(())
     }
