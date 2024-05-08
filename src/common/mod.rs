@@ -177,8 +177,14 @@ pub enum APN {
     DataObjWrite = 676,
     ObjStat = 633,
     ExecMyRule = 625,
+    RmColl = 679,
     GenQuery = 702,
     GeneralAdmin = 701,
     ModAvu = 706,
     ModAccessControl = 707,
+}
+
+pub mod response {
+    pub const SVR_TO_CLI_COLL_STAT: i32 = 99999996;
+    pub const SVR_TO_CLI_COLL_STAT_REPLY: i32 = 99999997;
 }

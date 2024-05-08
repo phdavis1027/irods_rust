@@ -6,7 +6,7 @@ use futures::{pin_mut, StreamExt};
 use irods_client::{
     bosd::xml::XML,
     connection::{authenticate::NativeAuthenticator, pool::IrodsManager, tcp::TcpConnector},
-    fs::download::ParallelDownloadContext,
+    fs::{delete::DeleteRequest, download::ParallelDownloadContext},
 };
 use test_common::test_manager;
 
@@ -15,11 +15,10 @@ async fn gen_query_test() {
     let mut pool = test_pool!(test_manager::<XML, TcpConnector, NativeAuthenticator>(), 17);
     let mut conn = pool.get().await.unwrap();
 
-    conn.change_user_password(
-        "rods".to_string(),
-        "tempZone".to_string(),
-        "bods".to_string(),
-    )
-    .await
-    .unwrap();
+    DeleteRequest::new(&mut conn, Path::new("/tempZone/home/rods"))
+        .force(true)
+        .recursive(true)
+        .execute()
+        .await
+        .unwrap();
 }
