@@ -1,6 +1,7 @@
 pub mod acls;
 pub mod admin;
 pub mod bin_bytes_buf;
+pub mod coll;
 pub mod cond_input;
 pub mod cs_neg;
 pub mod data_obj_inp;

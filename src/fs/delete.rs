@@ -1,8 +1,14 @@
 use std::path::Path;
 
 use crate::{
-    bosd::ProtocolEncoding, common::ObjectType, connection::Connection, error::errors::IrodsError,
+    bosd::ProtocolEncoding,
+    common::{cond_input_kw::CondInputKw, ObjectType},
+    connection::Connection,
+    error::errors::IrodsError,
+    msg::data_obj_inp::DataObjInp,
 };
+
+use super::OprType;
 
 pub struct DeleteRequest<'conn, 'p, T, C>
 where
@@ -51,6 +57,16 @@ where
     T: ProtocolEncoding,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
+    fn make_delete_data_object_request(path: &Path, force: bool) -> DataObjInp {
+        let mut inp = DataObjInp::new(path.to_str().unwrap().to_owned(), OprType::No, 0, 0);
+
+        if force {
+            inp.cond_input.set_kw(CondInputKw::ForceFlagKw);
+        }
+
+        inp
+    }
+
     async fn delete<'path>(
         &mut self,
         path: &'path Path,
