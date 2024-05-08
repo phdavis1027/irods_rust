@@ -3,7 +3,6 @@ use std::{io::Write, os::unix::fs::FileExt, path::Path};
 use crate::{error::errors::IrodsError, msg::stat::RodsObjStat};
 use futures::{future::BoxFuture, pin_mut, stream::FuturesUnordered, FutureExt, StreamExt};
 use tokio::fs::OpenOptions;
-use tokio::io::AsyncWriteExt;
 
 use crate::{
     bosd::ProtocolEncoding,
@@ -118,14 +117,15 @@ where
         }
     }
 
-    pub async fn download_data_object(
-        &mut self,
-        stat: &RodsObjStat,
-        src: &Path,
-        dst: &Path,
+    pub async fn download_data_object<'this, 'd>(
+        &'this mut self,
+        stat: &'d RodsObjStat,
+        src: &'d Path,
+        dst: &'d Path,
     ) -> Result<(), IrodsError> {
         if stat.size > self.max_size_before_parallel {
-            self.download_data_object_parallel(stat.size as usize).await
+            self.download_data_object_parallel(src, dst, stat.size as usize)
+                .await
         } else {
             let mut conn = self
                 .pool
@@ -166,10 +166,10 @@ where
         }
     }
 
-    pub async fn stat_and_download_data_object(
-        &mut self,
-        src: &Path,
-        dst: &Path,
+    pub async fn stat_and_download_data_object<'this, 'd>(
+        &'this mut self,
+        src: &'d Path,
+        dst: &'d Path,
     ) -> Result<(), IrodsError> {
         let mut conn = self
             .pool
@@ -248,7 +248,12 @@ where
         .boxed()
     }
 
-    pub async fn download_data_object_parallel(&mut self, size: usize) -> Result<(), IrodsError> {
+    pub async fn download_data_object_parallel<'this, 'd>(
+        &'this mut self,
+        local_path: &'d Path,
+        remote_path: &'d Path,
+        size: usize,
+    ) -> Result<(), IrodsError> {
         let len_per_task = ((size as f64 / self.num_tasks as f64).floor() as usize)
             + ((((size as u32) % self.num_tasks != 0) as usize) as usize);
 
@@ -261,8 +266,8 @@ where
                 .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
 
             let resource = self.resource.clone();
-            let remote_path = self.remote_path.to_path_buf();
-            let local_path = self.local_path.to_path_buf();
+            let remote_path = remote_path.to_path_buf();
+            let local_path = local_path.to_path_buf();
 
             futs.push(async move {
                 conn.do_parallel_download_task(

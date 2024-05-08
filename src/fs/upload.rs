@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
 
 use crate::{
     bosd::ProtocolEncoding,
@@ -135,8 +135,16 @@ where
                 )
                 .await?
             }
-            ObjectType::Coll if self.force_overwrite => {}
-            ObjectType::DataObj if self.force_overwrite => {}
+            ObjectType::Coll | ObjectType::DataObj if self.force_overwrite => {
+                conn.do_parallel_upload_task(
+                    self.remote_path,
+                    self.local_path,
+                    self.resource.clone(),
+                    0,
+                    meta.len() as usize,
+                )
+                .await?
+            }
             _ => {
                 return Err(IrodsError::Other(
                     "Remote path already exists and overwrite flag not set".into(),
@@ -189,19 +197,25 @@ where
         Ok(())
     }
 
-    pub async fn upload_dir(
-        &mut self,
-        local_path: &Path,
-        remote_path: &Path,
+    pub fn upload_dir<'this, 'd>(
+        &'this mut self,
+        local_path: &'d Path,
+        remote_path: &'d Path,
         meta: Metadata,
-    ) -> Result<(), IrodsError> {
-        let mut conn = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| IrodsError::Other("Failed to get connection".into()))?;
+    ) -> BoxFuture<'this, Result<(), IrodsError>>
+    where
+        'd: 'this,
+    {
+        async move {
+            let mut conn = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| IrodsError::Other("Failed to get connection".into()))?;
 
-        Ok(())
+            Ok(())
+        }
+        .boxed()
     }
 }
 
