@@ -1,3 +1,7 @@
+use std::io::Cursor;
+
+use tokio::io::AsyncReadExt;
+
 use crate::{
     bosd::ProtocolEncoding,
     common::APN,
@@ -7,7 +11,6 @@ use crate::{
 };
 
 use super::{DataObjectHandle, OprType, Whence};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 impl<T, C> Connection<T, C>
 where
@@ -21,16 +24,23 @@ where
     pub async fn write_data_obj_from_bytes_buf(
         &mut self,
         handle: DataObjectHandle,
+        len: usize,
     ) -> Result<(), IrodsError> {
         self.resources
             .send_header_then_msg::<T, _>(
-                &Self::make_write_data_obj_inp(handle, buf.len()),
+                &Self::make_write_data_obj_inp(handle, self.resources.bytes_buf.len()),
                 MsgType::RodsApiReq,
                 APN::DataObjWrite as i32,
             )
             .await?;
 
-        tokio::io::copy(&mut buf, &mut self.resources.transport).await?;
+        tokio::io::copy(
+            &mut Cursor::new(&mut self.resources.bytes_buf).take(len as u64),
+            &mut self.resources.transport,
+        )
+        .await?;
+
+        self.resources.read_standard_header::<T>().await?;
 
         Ok(())
     }

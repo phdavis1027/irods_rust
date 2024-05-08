@@ -4,6 +4,8 @@ use std::{
     path::Path,
 };
 
+use futures::{stream::FuturesUnordered, StreamExt};
+
 use crate::{
     bosd::ProtocolEncoding,
     common::ObjectType,
@@ -151,6 +153,39 @@ where
         remote_path: &Path,
         meta: Metadata,
     ) -> Result<(), IrodsError> {
+        let size = meta.len() as usize;
+        let len_per_task = ((size as f64 / self.num_tasks as f64).floor() as usize)
+            + ((((size as u32) % self.num_tasks != 0) as usize) as usize);
+
+        let futs = FuturesUnordered::new();
+
+        for task in 0..self.num_tasks {
+            let resource = self.resource.clone();
+            let remote_path = remote_path.to_path_buf();
+            let local_path = local_path.to_path_buf();
+
+            let mut conn = self
+                .pool
+                .get()
+                .await
+                .map_err(|_| IrodsError::Other("Failed to get connection".to_string()))?;
+
+            futs.push(async move {
+                conn.do_parallel_upload_task(
+                    &remote_path,
+                    &local_path,
+                    resource,
+                    task as usize,
+                    len_per_task,
+                )
+                .await?;
+
+                Ok::<_, IrodsError>(())
+            });
+        }
+
+        futs.collect::<Vec<_>>().await;
+
         Ok(())
     }
 
@@ -175,7 +210,7 @@ where
     T: ProtocolEncoding + Send,
     C: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send,
 {
-    async fn do_parallel_upload_task(
+    pub async fn do_parallel_upload_task(
         &mut self,
         remote_path: &Path,
         local_path: &Path,
@@ -183,6 +218,7 @@ where
         task: usize,
         len: usize,
     ) -> Result<(), IrodsError> {
+        println!("Doing parallel upload task {} of length {}", task, len);
         let file = OpenOptions::new().read(true).open(local_path)?;
 
         let handle = match resource {
@@ -202,6 +238,8 @@ where
         };
 
         let mut buf = std::mem::take(&mut self.resources.bytes_buf);
+
+        // Read the file into the bytes buf
         let buf = tokio::task::spawn_blocking(move || {
             if buf.len() < len {
                 buf.resize(len, 0);
@@ -214,6 +252,9 @@ where
         .map_err(|_| IrodsError::Other("Failed to transfer file".to_string()))??;
 
         self.resources.bytes_buf = buf;
+
+        // Send the contents of the bytes buf to the server
+        self.write_data_obj_from_bytes_buf(handle, len).await?;
 
         self.close(handle).await?;
 
