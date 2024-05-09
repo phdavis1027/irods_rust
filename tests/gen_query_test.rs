@@ -15,7 +15,7 @@ async fn gen_query_test() {
     let mut pool = test_pool!(test_manager::<XML, TcpConnector, NativeAuthenticator>(), 17);
     let mut conn = pool.get().await.unwrap();
 
-    DeleteRequest::new(&mut conn, Path::new("/tempZone/home/rods"))
+    DeleteRequest::new(&mut conn, Path::new("/tempZone/home/rods/sub"))
         .force(true)
         .recursive(true)
         .execute()

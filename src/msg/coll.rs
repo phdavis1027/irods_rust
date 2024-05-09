@@ -78,7 +78,7 @@ impl XMLSerializable for CollInp {
 
         tag!(writer, "collName", self.name.as_str());
         tag_fmt!(writer, "flags", "{}", self.flags);
-        tag_fmt!(writer, "oprType", "{:?}", self.opr_type);
+        tag_fmt!(writer, "oprType", "{:?}", self.opr_type as i32);
 
         self.cond_input.to_nested_xml(&mut writer)?;
 
@@ -166,6 +166,7 @@ impl XMLDeserializable for CollOprStat {
                         PathBuf::from_str(e.unescape_with(irods_unescapes)?.as_ref())
                             .map_err(|_| IrodsError::Other("Invalid path".to_string()))?,
                     );
+
                     return Ok(CollOprStat {
                         files_cnt: files_cnt
                             .ok_or_else(|| IrodsError::Other("Missing filesCnt".to_string()))?,
